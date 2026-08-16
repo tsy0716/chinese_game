@@ -64,41 +64,35 @@
   // ---------- 卡片 ----------
 
   /**
-   * 生成一张卡。
-   * @param {object[]} pool       词池，元素形如 { hanzi, pinyin }
-   * @param {number}   cols/rows  网格列数、行数
-   * @param {string}   seed       种子；同种子必出同一张卡
-   * @param {object[]} [fixedWords] 指定用这批词（「全班同词」模式下由 buildDeck 传入）
+   * 把一批词打乱位置，排成一张卡。
+   * @param {object[]} words  这张卡上的词，元素形如 { hanzi, pinyin }
+   * @param {string}   seed   种子；同种子必出同一个摆法
    */
-  function buildCard({ pool, cols, rows, seed, fixedWords }) {
-    const cells = cols * rows;
-    const rng = makeRng(seed);
-    const words = fixedWords ? shuffle(fixedWords, rng) : pickN(pool, cells, rng);
-    if (words.length !== cells) {
-      throw new Error(`词池只有 ${words.length} 个词，不够铺满 ${cols}x${rows} = ${cells} 格`);
-    }
-    return { seed: String(seed), cells: words };
+  function buildCard({ words, seed }) {
+    return { seed: String(seed), cells: shuffle(words, makeRng(seed)) };
   }
 
   /**
-   * 生成一整批卡，保证两两不同。
-   * sameWords=true 时全班用同一批词，只打乱位置。
+   * 生成一整批卡。
+   *
+   * 全班永远用同一批词，只有摆放位置不同 —— 这样复习覆盖最均匀，而且**任何一张卡
+   * 本身就是完整词表**，裁判多印一张就能照着喊，不需要另做喊词单。
+   *
+   * 词池比格数大时，先随机抽定这一局要用的词，之后每张卡都用这批词。
    */
-  function buildDeck({ pool, cols, rows, count, seed, sameWords }) {
+  function buildDeck({ pool, cols, rows, count, seed }) {
     const cellCount = cols * rows;
-    const fixedWords = sameWords
-      ? pickN(pool, cellCount, makeRng(`${seed}:words`))
-      : undefined;
+    const words = pickN(pool, cellCount, makeRng(`${seed}:words`));
 
     const deck = [];
     const seen = new Set();
 
     for (let i = 1; i <= count; i++) {
       let card = null;
-      // 撞车了就换个种子重抽，保证没有两张一模一样的卡
+      // 摆法撞车了就换个种子重排，保证没有两张一模一样的卡
       for (let attempt = 0; attempt < 200; attempt++) {
         const cardSeed = attempt === 0 ? `${seed}-${i}` : `${seed}-${i}#${attempt}`;
-        const candidate = buildCard({ pool, cols, rows, seed: cardSeed, fixedWords });
+        const candidate = buildCard({ words, seed: cardSeed });
         const fingerprint = candidate.cells.map((w) => w.hanzi).join('|');
         if (!seen.has(fingerprint)) {
           seen.add(fingerprint);
@@ -107,7 +101,7 @@
         }
       }
       if (!card) {
-        throw new Error(`词池太小，凑不出 ${count} 张互不相同的卡，请多选几个主题或减少张数`);
+        throw new Error(`格子太少，凑不出 ${count} 张摆法互不相同的卡，请减少张数或换更大的网格`);
       }
       deck.push({ index: i, seed: card.seed, cells: card.cells });
     }

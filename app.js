@@ -19,12 +19,9 @@
 
   const el = {
     packs: $('packs'), custom: $('custom'), mode: $('mode'), grid: $('grid'), count: $('count'),
-    title: $('title'), seed: $('seed'), sameWords: $('sameWords'),
-    generate: $('generate'), printCards: $('printCards'), printSheet: $('printSheet'),
-    status: $('status'), tabs: $('tabs'), cards: $('cards'),
-    callerStage: $('callerStage'), callNext: $('callNext'), callReset: $('callReset'),
-    callerMeta: $('callerMeta'), calledList: $('calledList'),
-    sheetTitle: $('sheetTitle'), sheetMeta: $('sheetMeta'), sheetGrid: $('sheetGrid'),
+    title: $('title'), seed: $('seed'),
+    generate: $('generate'), printCards: $('printCards'),
+    status: $('status'), cards: $('cards'),
   };
 
   // 行高从 logic.js 的 METRICS 来，CSS 通过这两个变量读 —— 保证算尺寸和实际渲染用同一组数
@@ -33,8 +30,6 @@
 
   /** 本次生成的结果 */
   let state = { pool: [], deck: [], cols: 0, rows: 0, seed: '', mode: 'both' };
-  /** 喊词器状态 */
-  let round = { queue: [], called: [] };
 
   // ---------- 主题勾选 ----------
 
@@ -120,10 +115,8 @@
     const cells = cols * rows;
     if (pool.length < cells) {
       say(`词池 ${pool.length} 个词，铺不满 ${cols}x${rows} = ${cells} 格，再多选一个主题。`, true);
-    } else if (pool.length === cells) {
-      say(`词池 ${pool.length} 个词，正好铺满 —— 每张卡词语相同，只有位置不同。`);
     } else {
-      say(`词池 ${pool.length} 个词，每张卡从中随机抽 ${cells} 个。`);
+      say(`词池 ${pool.length} 个词，这一局随机抽 ${cells} 个，全班共用这批词、只打乱位置。`);
     }
   }
 
@@ -151,9 +144,7 @@
 
     let deck;
     try {
-      deck = L.buildDeck({
-        pool, cols, rows, count, seed, sameWords: el.sameWords.checked,
-      });
+      deck = L.buildDeck({ pool, cols, rows, count, seed });
     } catch (err) {
       say(err.message, true);
       return;
@@ -163,16 +154,11 @@
     state = { pool, deck, cols, rows, seed, mode: el.mode.value };
 
     renderCards();
-    renderSheet();
-    resetRound();
-
     el.printCards.disabled = false;
-    el.printSheet.disabled = false;
-    el.callNext.disabled = false;
-    el.callReset.disabled = false;
 
-    say(`已生成 ${deck.length} 张卡（种子 ${seed}）。${MODE_LABEL[state.mode]}，` +
-        `词池 ${pool.length} 词，每张 ${cols * rows} 格。`);
+    say(`已生成 ${deck.length} 张学生卡 + 1 张裁判卡，共 ${deck.length + 1} 页` +
+        `（种子 ${seed}）。${MODE_LABEL[state.mode]}，每张 ${cols * rows} 格。` +
+        `全班词语相同，裁判照着自己那张划掉就行。`);
   });
 
   // ---------- 渲染一个词（拼音逐字对齐汉字） ----------
@@ -183,25 +169,6 @@
     d.textContent = text;
     if (sizeMm) d.style.fontSize = sizeMm + 'mm';
     return d;
-  }
-
-  /** 喊词器上的大字版：不管卡片是什么模式，都把汉字和拼音一起显示给老师看 */
-  function renderBigWord(word) {
-    const wrap = document.createElement('div');
-    wrap.className = 'word word--big';
-    const pairs = L.alignPinyin(word.hanzi, word.pinyin);
-    if (pairs) {
-      for (const { char, syllable } of pairs) {
-        const col = document.createElement('div');
-        col.className = 'ch';
-        col.append(line('py', syllable), line('hz', char));
-        wrap.appendChild(col);
-      }
-    } else {
-      wrap.classList.add('word--loose');
-      wrap.append(line('py', word.pinyin), line('hz', word.hanzi));
-    }
-    return wrap;
   }
 
   /** 卡片格子里的一个词。字号由 logic.js 按模式和格子尺寸算好 */
@@ -244,145 +211,80 @@
 
   // ---------- 卡片 ----------
 
-  function renderCards() {
-    const { deck, cols, rows, mode } = state;
+  /**
+   * 画一张卡。isRef=true 时是裁判那一张 —— 词和学生卡一模一样，
+   * 只是抬头换成「裁判用」，照着划掉就是喊词单。
+   */
+  function renderCard(card, isRef) {
+    const { cols, rows, mode } = state;
     const title = el.title.value.trim() || '拼音宾果';
     const cellW = PAGE_INNER_MM / cols;
     const cellH = GRID_MM / rows;
+
+    const slot = document.createElement('div');
+    slot.className = 'card-slot';
+
+    const box = document.createElement('div');
+    box.className = isRef ? 'card card--ref' : 'card';
+
+    const head = document.createElement('div');
+    head.className = 'card__head';
+
+    const left = document.createElement('div');
+    const h = document.createElement('div');
+    h.className = 'card__title';
+    h.textContent = isRef ? title + ' · 裁判用' : title;
+
+    const sub = document.createElement('div');
+    if (isRef) {
+      sub.className = 'card__note';
+      sub.textContent = '喊过的词划掉。全班卡上就是这些词，只是位置不同。';
+    } else {
+      sub.className = 'card__name';
+      sub.append('姓名 ', Object.assign(document.createElement('u'), { textContent: ' ' }));
+    }
+    left.append(h, sub);
+
+    const id = document.createElement('div');
+    id.className = 'card__id';
+    id.textContent = isRef
+      ? `裁判 · ${state.seed}`
+      : `#${String(card.index).padStart(2, '0')} · ${state.seed}`;
+    head.append(left, id);
+
+    const grid = document.createElement('div');
+    grid.className = 'card__grid';
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    // 行高写死，不用 1fr —— 卡片高度必须确定，否则打印时可能被劈成两页
+    grid.style.gridTemplateRows = `repeat(${rows}, ${cellH}mm)`;
+
+    for (const word of card.cells) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.appendChild(renderCellWord(word, mode, cellW, cellH));
+      grid.appendChild(cell);
+    }
+
+    box.append(head, grid);
+    slot.appendChild(box);
+    return slot;
+  }
+
+  function renderCards() {
     el.cards.textContent = '';
-
-    for (const card of deck) {
-      const slot = document.createElement('div');
-      slot.className = 'card-slot';
-
-      const box = document.createElement('div');
-      box.className = 'card';
-
-      const head = document.createElement('div');
-      head.className = 'card__head';
-      const left = document.createElement('div');
-      const h = document.createElement('div');
-      h.className = 'card__title';
-      h.textContent = title;
-      const name = document.createElement('div');
-      name.className = 'card__name';
-      name.append('姓名 ', Object.assign(document.createElement('u'), { textContent: ' ' }));
-      left.append(h, name);
-      const id = document.createElement('div');
-      id.className = 'card__id';
-      id.textContent = `#${String(card.index).padStart(2, '0')} · ${card.seed}`;
-      head.append(left, id);
-
-      const grid = document.createElement('div');
-      grid.className = 'card__grid';
-      grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-      // 行高写死，不用 1fr —— 卡片高度必须确定，否则打印时可能被劈成两页
-      grid.style.gridTemplateRows = `repeat(${rows}, ${cellH}mm)`;
-
-      for (const word of card.cells) {
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.appendChild(renderCellWord(word, mode, cellW, cellH));
-        grid.appendChild(cell);
-      }
-
-      box.append(head, grid);
-      slot.appendChild(box);
-      el.cards.appendChild(slot);
-    }
+    // 裁判那张排在最前面，老师撕走第一页就行。
+    // 它用独立的摆法 —— 否则会和某个学生的卡一模一样，那孩子照着老师划掉的位置抄就行了。
+    const referee = L.buildCard({
+      words: state.deck[0].cells,
+      seed: `${state.seed}-ref`,
+    });
+    el.cards.appendChild(renderCard(referee, true));
+    for (const card of state.deck) el.cards.appendChild(renderCard(card, false));
   }
-
-  // ---------- 喊词器 ----------
-
-  function resetRound() {
-    // 每一轮的顺序都重新随机，同一批卡可以连着玩好几局
-    round = { queue: L.shuffle(state.pool, Math.random), called: [] };
-    el.callerStage.textContent = '';
-    const p = document.createElement('p');
-    p.className = 'caller__empty';
-    p.textContent = '点「喊下一个词」开始。';
-    el.callerStage.appendChild(p);
-    el.calledList.textContent = '';
-    el.callerMeta.textContent = `词池 ${state.pool.length} 个词，还没开始喊。`;
-    el.callNext.disabled = state.pool.length === 0;
-  }
-
-  el.callReset.addEventListener('click', resetRound);
-
-  el.callNext.addEventListener('click', () => {
-    const word = round.queue.shift();
-    if (!word) {
-      el.callerMeta.textContent = '词池里的词全喊完了。点「重新开始」换一轮。';
-      el.callNext.disabled = true;
-      return;
-    }
-    round.called.push(word);
-
-    el.callerStage.textContent = '';
-    el.callerStage.appendChild(renderBigWord(word));
-
-    const li = document.createElement('li');
-    li.textContent = word.hanzi;
-    const py = document.createElement('span');
-    py.className = 'py';
-    py.textContent = word.pinyin;
-    li.appendChild(py);
-    el.calledList.appendChild(li);
-
-    el.callerMeta.textContent =
-      `已喊 ${round.called.length} 个，还剩 ${round.queue.length} 个。`;
-  });
-
-  // ---------- 喊词单 ----------
-
-  function renderSheet() {
-    el.sheetTitle.textContent = (el.title.value.trim() || '拼音宾果') + ' · 喊词单';
-    el.sheetMeta.textContent =
-      `词池 ${state.pool.length} 词 · 卡片种子 ${state.seed} · ` +
-      `${state.cols}x${state.rows} 格 · ${MODE_LABEL[state.mode]} —— 喊过的词打勾`;
-
-    el.sheetGrid.textContent = '';
-    for (const word of state.pool) {
-      const item = document.createElement('div');
-      item.className = 'sheet__item';
-      const box = document.createElement('span');
-      box.className = 'sheet__box';
-      const hz = document.createElement('span');
-      hz.textContent = word.hanzi;
-      const py = document.createElement('span');
-      py.className = 'py';
-      py.textContent = word.pinyin;
-      item.append(box, hz, py);
-      el.sheetGrid.appendChild(item);
-    }
-  }
-
-  // ---------- 视图切换 ----------
-
-  el.tabs.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-view]');
-    if (!btn) return;
-    for (const b of el.tabs.querySelectorAll('button')) {
-      const on = b === btn;
-      b.setAttribute('aria-selected', String(on));
-      $('view-' + b.dataset.view).hidden = !on;
-    }
-  });
 
   // ---------- 打印 ----------
 
-  function printWith(className) {
-    document.body.classList.add(className);
-    const clear = () => {
-      document.body.classList.remove(className);
-      window.removeEventListener('afterprint', clear);
-    };
-    window.addEventListener('afterprint', clear);
-    window.print();
-  }
-
-  el.printCards.addEventListener('click', () => printWith('print-cards'));
-  el.printSheet.addEventListener('click', () => printWith('print-sheet'));
+  el.printCards.addEventListener('click', () => window.print());
 
   rebuildGridOptions();
   reportPool();

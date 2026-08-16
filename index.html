@@ -108,18 +108,6 @@
   .status { font-size: 13px; color: var(--muted); margin-top: 12px; }
   .status.err { color: var(--accent); }
 
-  .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
-  .tabs button {
-    background: #fff;
-    color: var(--muted);
-    border-color: var(--line);
-  }
-  .tabs button[aria-selected="true"] {
-    background: var(--ink);
-    color: #fff;
-    border-color: var(--ink);
-  }
-
   .hint {
     font-size: 13px;
     color: var(--muted);
@@ -129,8 +117,6 @@
     padding: 9px 12px;
     margin-top: 12px;
   }
-
-  .view[hidden] { display: none; }
 
   /* ---------- 卡片 ---------- */
 
@@ -179,6 +165,10 @@
   .card__name { font-size: 5mm; white-space: nowrap; }
   .card__name u { display: inline-block; width: 45mm; text-decoration: none; border-bottom: .4mm solid #000; }
   .card__id { font-size: 3.6mm; color: #555; font-variant-numeric: tabular-nums; }
+
+  /* 裁判那一张：词和学生卡完全一样，只是抬头不同 —— 照着划掉就是喊词单 */
+  .card--ref .card__head { border-bottom-width: 1.2mm; }
+  .card__note { font-size: 4.2mm; color: #333; }
 
   .card__grid {
     /* 行高由 app.js 写死成 mm（总计 210mm），不用 flex 自动撑满 ——
@@ -230,74 +220,6 @@
   /* 音节数和汉字数对不上时（自定义词表里的连写拼音）整串居中，不硬凑 */
   .word--loose { flex-direction: column; align-items: center; gap: 0; }
 
-  /* 喊词器上的大字版：固定字号，不走格子那套计算 */
-  .word--big { gap: 10px; }
-  .word--big .py { font-size: 30px; color: #555; }
-  .word--big .hz { font-size: 90px; }
-
-  /* ---------- 喊词器 ---------- */
-
-  .caller { text-align: center; padding: 10px 0 24px; }
-  .caller__stage {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 40px 20px;
-    margin-bottom: 18px;
-    min-height: 190px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
-  .caller__empty { font-size: 17px; color: var(--muted); }
-  .caller__meta { font-size: 14px; color: var(--muted); margin-top: 10px; }
-
-  .called {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 16px 18px;
-    margin-top: 18px;
-  }
-  .called ol {
-    margin: 0;
-    padding-left: 22px;
-    columns: 4;
-    column-gap: 22px;
-    font-size: 14px;
-  }
-  .called li { margin-bottom: 3px; break-inside: avoid; }
-  .called .py { color: var(--muted); font-size: 12px; margin-left: 5px; }
-
-  /* ---------- 喊词单 ---------- */
-
-  .sheet { background: #fff; color: #000; padding: 0; }
-  .sheet__head { display: none; }
-  .sheet__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 2px 14px;
-  }
-  .sheet__item {
-    display: flex;
-    align-items: baseline;
-    gap: 7px;
-    padding: 3px 0;
-    border-bottom: 1px dotted var(--line);
-    font-size: 14px;
-    break-inside: avoid;
-  }
-  .sheet__box {
-    flex: 0 0 auto;
-    width: 11px; height: 11px;
-    border: 1px solid #000;
-    border-radius: 2px;
-    display: inline-block;
-  }
-  .sheet__item .py { color: #555; font-size: 12px; }
-
   /* ---------- 打印 ---------- */
 
   @page { size: A4 portrait; margin: 10mm; }
@@ -306,12 +228,6 @@
     body { background: #fff; }
     .wrap { max-width: none; padding: 0; }
     .noprint { display: none !important; }
-
-    /* 默认什么都不打印，由 body 上的类决定打印哪一块 */
-    .view { display: none !important; }
-
-    body.print-cards #view-cards { display: block !important; }
-    body.print-sheet #view-sheet { display: block !important; }
 
     .cards { display: block; gap: 0; }
     .card-slot {
@@ -336,10 +252,6 @@
       page-break-inside: avoid;
     }
 
-    .sheet__head { display: block; margin-bottom: 6mm; }
-    .sheet__head h2 { font-size: 6mm; margin: 0 0 1mm; }
-    .sheet__head p { font-size: 3.4mm; color: #444; margin: 0; }
-    .sheet__grid { grid-template-columns: repeat(4, 1fr); }
   }
 </style>
 </head>
@@ -391,7 +303,7 @@
       </label>
 
       <label class="field">
-        <span>打印张数</span>
+        <span>学生人数</span>
         <input type="number" id="count" value="20" min="1" max="200">
       </label>
 
@@ -406,65 +318,24 @@
       </label>
     </div>
 
-    <label class="checkline" style="margin-top:16px">
-      <input type="checkbox" id="sameWords">
-      <span>每张卡词语相同，只打乱位置<span class="count" style="color:var(--muted)">（复习覆盖最均匀；不勾则从词池随机抽，惊喜感更强）</span></span>
-    </label>
-
     <div class="row" style="margin-top:18px">
       <button id="generate">生成卡片</button>
-      <button id="printCards" class="ghost" disabled>打印卡片</button>
-      <button id="printSheet" class="ghost" disabled>打印喊词单</button>
+      <button id="printCards" class="ghost" disabled>打印</button>
     </div>
 
     <p class="status" id="status">先选几个主题，然后点「生成卡片」。</p>
     <p class="hint">纸张选 A4 竖向，一页一张卡。页眉页脚开着也不会把卡片劈成两页，但页码和网址会印在卡片旁边 —— 想干净一点就在打印对话框里关掉「页眉和页脚」。</p>
   </section>
 
-  <nav class="tabs noprint" id="tabs" role="tablist">
-    <button role="tab" data-view="cards" aria-selected="true">卡片</button>
-    <button role="tab" data-view="caller" aria-selected="false">喊词器</button>
-    <button role="tab" data-view="sheet" aria-selected="false">喊词单</button>
-  </nav>
-
-  <div class="view" id="view-cards">
-    <div class="cards" id="cards"></div>
-  </div>
-
-  <div class="view" id="view-caller" hidden>
-    <div class="caller">
-      <div class="caller__stage" id="callerStage">
-        <p class="caller__empty">先生成卡片，然后点下面的按钮开始喊词。</p>
-      </div>
-      <div class="row" style="justify-content:center">
-        <button id="callNext" disabled>喊下一个词</button>
-        <button id="callReset" class="ghost" disabled>重新开始</button>
-      </div>
-      <p class="caller__meta" id="callerMeta"></p>
-    </div>
-    <div class="called">
-      <h2 style="font-size:14px;margin:0 0 10px;color:var(--muted)">已经喊过的词（孩子喊「赢了」时照这个核对）</h2>
-      <ol id="calledList"></ol>
-    </div>
-  </div>
-
-  <div class="view" id="view-sheet" hidden>
-    <div class="sheet">
-      <div class="sheet__head">
-        <h2 id="sheetTitle">拼音宾果 · 喊词单</h2>
-        <p id="sheetMeta"></p>
-      </div>
-      <div class="sheet__grid" id="sheetGrid"></div>
-    </div>
-  </div>
+  <div class="cards" id="cards"></div>
 
 </div>
 
 <!-- GitHub Pages 给每个文件发 Cache-Control: max-age=600，三个文件各缓存各的。
      不带版本号的话，回访用户可能拿到「新 HTML + 旧 app.js」，页面直接坏掉。
-     === 改了 js 就把下面三处 v= 一起改掉（写当天日期即可）=== -->
-<script src="logic.js?v=20260816"></script>
-<script src="words.js?v=20260816"></script>
-<script src="app.js?v=20260816"></script>
+     === 改了 js 就把下面三处 v= 一起 +1 === -->
+<script src="logic.js?v=3"></script>
+<script src="words.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

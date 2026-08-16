@@ -97,68 +97,72 @@ test('pickN: 词不够时报错，而不是静默出空格', () => {
 
 // ---------- buildCard：单张卡 ----------
 
-test('buildCard: 格子数 = 列 x 行，且词不重复', () => {
-  const card = L.buildCard({ pool: POOL, cols: 4, rows: 5, seed: 'c1' });
-  assert.strictEqual(card.cells.length, 20);
-  assert.strictEqual(new Set(card.cells.map((w) => w.hanzi)).size, 20);
+test('buildCard: 格子里就是给的那批词，一个不多一个不少', () => {
+  const words = POOL.slice(0, 12);
+  const card = L.buildCard({ words, seed: 'c1' });
+  assert.deepStrictEqual(
+    card.cells.map((w) => w.hanzi).sort(),
+    words.map((w) => w.hanzi).sort()
+  );
 });
 
-test('buildCard: 同一个种子必出同一张卡（丢卡可原样重印）', () => {
-  const a = L.buildCard({ pool: POOL, cols: 4, rows: 4, seed: 'k3m9' });
-  const b = L.buildCard({ pool: POOL, cols: 4, rows: 4, seed: 'k3m9' });
+test('buildCard: 同一个种子必出同一个摆法', () => {
+  const words = POOL.slice(0, 16);
+  const a = L.buildCard({ words, seed: 'k3m9' });
+  const b = L.buildCard({ words, seed: 'k3m9' });
   assert.deepStrictEqual(a.cells, b.cells);
   assert.strictEqual(a.seed, 'k3m9');
 });
 
-test('buildCard: 不同种子出不同的卡', () => {
-  const a = L.buildCard({ pool: POOL, cols: 4, rows: 4, seed: 'aaa' });
-  const b = L.buildCard({ pool: POOL, cols: 4, rows: 4, seed: 'bbb' });
+test('buildCard: 不同种子出不同的摆法', () => {
+  const words = POOL.slice(0, 16);
+  const a = L.buildCard({ words, seed: 'aaa' });
+  const b = L.buildCard({ words, seed: 'bbb' });
   assert.notDeepStrictEqual(a.cells, b.cells);
-});
-
-test('buildCard: 词池不够铺满时报错', () => {
-  assert.throws(() => L.buildCard({ pool: POOL, cols: 5, rows: 6, seed: 'c2' }), /词.*不够|not enough/i);
 });
 
 // ---------- buildDeck：一整批卡 ----------
 
-test('buildDeck: 生成指定张数，每张带独立可重印的种子', () => {
+test('buildDeck: 生成指定张数，格数正确', () => {
   const deck = L.buildDeck({ pool: POOL, cols: 4, rows: 5, count: 6, seed: 'deck1' });
   assert.strictEqual(deck.length, 6);
   deck.forEach((card, i) => {
     assert.strictEqual(card.index, i + 1);
-    const reprint = L.buildCard({ pool: POOL, cols: 4, rows: 5, seed: card.seed });
-    assert.deepStrictEqual(reprint.cells, card.cells, `第 ${i + 1} 张按种子重印对不上`);
+    assert.strictEqual(card.cells.length, 20);
   });
 });
 
-test('buildDeck: 同一批里没有两张一模一样的卡', () => {
-  const deck = L.buildDeck({ pool: POOL, cols: 4, rows: 5, count: 12, seed: 'deck2' });
-  const fingerprints = deck.map((c) => c.cells.map((w) => w.hanzi).join('|'));
-  assert.strictEqual(new Set(fingerprints).size, deck.length);
+test('buildDeck: 全班永远用同一批词 —— 任何一张卡都是完整词表', () => {
+  const deck = L.buildDeck({ pool: POOL, cols: 4, rows: 4, count: 8, seed: 'sw' });
+  const sets = deck.map((c) => c.cells.map((w) => w.hanzi).sort().join('|'));
+  assert.strictEqual(new Set(sets).size, 1, '各张卡的词语集合必须完全相同');
 });
 
-test('buildDeck: 同种子重跑，整批卡完全一致', () => {
+test('buildDeck: 词池比格数大时也一样 —— 先抽定这一局的词，之后每张卡都用它', () => {
+  // 20 词的池子铺 16 格，仍然是同一批 16 个词，只是摆法不同
+  const deck = L.buildDeck({ pool: POOL, cols: 4, rows: 4, count: 10, seed: 'big' });
+  const sets = deck.map((c) => c.cells.map((w) => w.hanzi).sort().join('|'));
+  assert.strictEqual(new Set(sets).size, 1);
+  assert.strictEqual(deck[0].cells.length, 16);
+});
+
+test('buildDeck: 每张卡的摆法各不相同', () => {
+  const deck = L.buildDeck({ pool: POOL, cols: 4, rows: 5, count: 12, seed: 'deck2' });
+  const orders = deck.map((c) => c.cells.map((w) => w.hanzi).join('|'));
+  assert.strictEqual(new Set(orders).size, deck.length);
+});
+
+test('buildDeck: 同种子重跑，整批卡完全一致（丢卡可原样重印）', () => {
   const a = L.buildDeck({ pool: POOL, cols: 4, rows: 4, count: 5, seed: 'same' });
   const b = L.buildDeck({ pool: POOL, cols: 4, rows: 4, count: 5, seed: 'same' });
   assert.deepStrictEqual(a, b);
 });
 
-test('buildDeck: sameWords 模式下每张卡词语相同，只有位置不同', () => {
-  const deck = L.buildDeck({
-    pool: POOL, cols: 4, rows: 4, count: 8, seed: 'sw', sameWords: true,
-  });
-  const sorted = deck.map((c) => c.cells.map((w) => w.hanzi).sort().join('|'));
-  assert.strictEqual(new Set(sorted).size, 1, '各张卡的词语集合应当完全相同');
-
-  const ordered = deck.map((c) => c.cells.map((w) => w.hanzi).join('|'));
-  assert.strictEqual(new Set(ordered).size, deck.length, '各张卡的摆放顺序应当各不相同');
-});
-
-test('buildDeck: 默认模式下大词池会抽出不同的词，不只是换位置', () => {
-  const deck = L.buildDeck({ pool: POOL, cols: 4, rows: 4, count: 10, seed: 'diff' });
-  const sorted = deck.map((c) => c.cells.map((w) => w.hanzi).sort().join('|'));
-  assert.ok(new Set(sorted).size > 1, '20 选 16 应当抽出不同的词语组合');
+test('buildDeck: 词池不够铺满时报错，而不是静默出空格', () => {
+  assert.throws(
+    () => L.buildDeck({ pool: POOL, cols: 5, rows: 6, count: 2, seed: 'x' }),
+    /词.*不够/
+  );
 });
 
 // ---------- parseWordList：自定义词表 ----------
