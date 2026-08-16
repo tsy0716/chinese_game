@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>拼音宾果 · 连四</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #d4d4d4;
+    --bg: #f6f5f3;
+    --panel: #fff;
+    --accent: #b23b2e;
+    --hanzi-font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+                  "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--hanzi-font);
+    line-height: 1.5;
+  }
+
+  /* ---------- 控制面板（不打印） ---------- */
+
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+
+  .panel h2 {
+    font-size: 15px;
+    margin: 0 0 12px;
+    letter-spacing: .04em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .packs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px 14px;
+  }
+
+  .packs label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 3px 0;
+  }
+
+  .packs .count { color: var(--muted); font-size: 12px; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > span { font-size: 13px; color: var(--muted); }
+
+  input[type="text"], input[type="number"], select, textarea {
+    font: inherit;
+    font-size: 14px;
+    padding: 7px 9px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    color: inherit;
+  }
+  input[type="number"] { width: 90px; }
+  input[type="text"] { width: 150px; }
+  textarea { width: 100%; min-height: 90px; resize: vertical; line-height: 1.7; }
+
+  .checkline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  button {
+    font: inherit;
+    font-size: 14px;
+    padding: 9px 18px;
+    border: 1px solid var(--ink);
+    border-radius: 6px;
+    background: var(--ink);
+    color: #fff;
+    cursor: pointer;
+  }
+  button.ghost { background: #fff; color: var(--ink); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .status { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .status.err { color: var(--accent); }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .tabs button {
+    background: #fff;
+    color: var(--muted);
+    border-color: var(--line);
+  }
+  .tabs button[aria-selected="true"] {
+    background: var(--ink);
+    color: #fff;
+    border-color: var(--ink);
+  }
+
+  .hint {
+    font-size: 13px;
+    color: var(--muted);
+    background: #fffbe9;
+    border: 1px solid #eadfae;
+    border-radius: 6px;
+    padding: 9px 12px;
+    margin-top: 12px;
+  }
+
+  .view[hidden] { display: none; }
+
+  /* ---------- 规则速查 ---------- */
+
+  .rules { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .rules p { margin: 0; font-size: 14px; }
+  .minigrid {
+    display: grid;
+    grid-template-columns: repeat(5, 15px);
+    grid-auto-rows: 15px;
+    gap: 2px;
+  }
+  .minigrid i { background: #e6e4e0; border-radius: 2px; }
+  .minigrid i.on { background: var(--accent); }
+
+  /* ---------- 卡片 ---------- */
+
+  .cards {
+    --s: .4;                       /* 屏幕预览缩放 */
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(190mm * .4), 1fr));
+    gap: 18px;
+    justify-items: start;
+  }
+
+  .card-slot {
+    width: calc(190mm * var(--s));
+    height: calc(277mm * var(--s));
+    overflow: hidden;
+  }
+
+  .card {
+    width: 190mm;
+    height: 277mm;
+    background: #fff;
+    color: #000;
+    display: flex;
+    flex-direction: column;
+    transform: scale(var(--s));
+    transform-origin: top left;
+    border: 1px solid var(--line);
+  }
+
+  .card__head {
+    flex: 0 0 30mm;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8mm;
+    padding: 0 2mm 4mm;
+    border-bottom: .6mm solid #000;
+  }
+
+  .card__title { font-size: 8mm; font-weight: 700; letter-spacing: .05em; }
+  .card__name { font-size: 5mm; white-space: nowrap; }
+  .card__name u { display: inline-block; width: 45mm; text-decoration: none; border-bottom: .4mm solid #000; }
+  .card__id { font-size: 3.6mm; color: #555; font-variant-numeric: tabular-nums; }
+
+  .card__grid {
+    flex: 1;
+    display: grid;
+    gap: 0;
+    margin-top: 4mm;
+    border-top: .4mm solid #000;
+    border-left: .4mm solid #000;
+  }
+
+  .cell {
+    border-right: .4mm solid #000;
+    border-bottom: .4mm solid #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1mm;
+    overflow: hidden;
+  }
+
+  /* 逐字对齐：每个汉字和它的音节各占一列 */
+  .word { display: flex; align-items: flex-end; justify-content: center; gap: .8mm; }
+  .word .ch { display: flex; flex-direction: column; align-items: center; }
+
+  .word .py {
+    /* 两个上限取小：一是汉字字号的四成（教材里的观感比例），
+       二是按格宽平摊，防止 cháng / zhuàng 这种长音节把格子撑破 */
+    font-size: min(
+      calc(var(--cw) / (var(--n) + 0.8) * 0.40),
+      calc(var(--cw) / var(--n) * 0.30)
+    );
+    line-height: 1.25;
+    color: #444;
+    white-space: nowrap;
+  }
+  .word .hz {
+    font-size: min(14mm, calc(var(--cw) / (var(--n) + 0.8)));
+    line-height: 1.1;
+    font-weight: 500;
+  }
+
+  /* 音节数和汉字数对不上时（自定义词表里的连写拼音）整串居中，不硬凑 */
+  .word--loose { flex-direction: column; align-items: center; gap: 0; }
+
+  /* 喊词器上的大字版：不依赖 --cw / --n，直接给固定字号 */
+  .word--big { gap: 10px; }
+  .word--big .py { font-size: 30px; color: #555; }
+  .word--big .hz { font-size: 90px; }
+
+  /* ---------- 喊词器 ---------- */
+
+  .caller { text-align: center; padding: 10px 0 24px; }
+  .caller__stage {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 40px 20px;
+    margin-bottom: 18px;
+    min-height: 190px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .caller__empty { font-size: 17px; color: var(--muted); }
+  .caller__meta { font-size: 14px; color: var(--muted); margin-top: 10px; }
+
+  .called {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-top: 18px;
+  }
+  .called ol {
+    margin: 0;
+    padding-left: 22px;
+    columns: 4;
+    column-gap: 22px;
+    font-size: 14px;
+  }
+  .called li { margin-bottom: 3px; break-inside: avoid; }
+  .called .py { color: var(--muted); font-size: 12px; margin-left: 5px; }
+
+  /* ---------- 喊词单 ---------- */
+
+  .sheet { background: #fff; color: #000; padding: 0; }
+  .sheet__head { display: none; }
+  .sheet__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 2px 14px;
+  }
+  .sheet__item {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 3px 0;
+    border-bottom: 1px dotted var(--line);
+    font-size: 14px;
+    break-inside: avoid;
+  }
+  .sheet__box {
+    flex: 0 0 auto;
+    width: 11px; height: 11px;
+    border: 1px solid #000;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .sheet__item .py { color: #555; font-size: 12px; }
+
+  /* ---------- 打印 ---------- */
+
+  @page { size: A4 portrait; margin: 10mm; }
+
+  @media print {
+    body { background: #fff; }
+    .wrap { max-width: none; padding: 0; }
+    .noprint { display: none !important; }
+
+    /* 默认什么都不打印，由 body 上的类决定打印哪一块 */
+    .view { display: none !important; }
+
+    body.print-cards #view-cards { display: block !important; }
+    body.print-sheet #view-sheet { display: block !important; }
+
+    .cards { display: block; gap: 0; }
+    .card-slot {
+      width: auto;
+      height: auto;
+      overflow: visible;
+      break-after: page;
+      page-break-after: always;
+      break-inside: avoid;
+    }
+    .card-slot:last-child { break-after: auto; page-break-after: auto; }
+    .card {
+      transform: none;
+      border: none;
+      width: 100%;
+      /* 可用高度是 297 - 10 - 10 = 277mm，留 2mm 余量防止舍入溢出到第二页 */
+      height: 275mm;
+    }
+
+    .sheet__head { display: block; margin-bottom: 6mm; }
+    .sheet__head h2 { font-size: 6mm; margin: 0 0 1mm; }
+    .sheet__head p { font-size: 3.4mm; color: #444; margin: 0; }
+    .sheet__grid { grid-template-columns: repeat(4, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="noprint">
+    <h1>拼音宾果 · 连四</h1>
+    <p class="sub">裁判喊词，选手在卡片上找词并标记。横、竖、斜任意方向连成 4 个即获胜。</p>
+  </header>
+
+  <section class="panel noprint">
+    <h2>1 · 选主题（可多选，选得越多词池越大）</h2>
+    <div class="packs" id="packs"></div>
+
+    <div style="margin-top:18px">
+      <h2>另外加词（可留空）</h2>
+      <textarea id="custom" spellcheck="false"
+        placeholder="每行一个词，汉字和拼音之间空一格，拼音按音节分开，一个音节对一个字：&#10;苹果 píng guǒ&#10;对不起 duì bu qǐ&#10;# 井号开头的行会被忽略"></textarea>
+    </div>
+  </section>
+
+  <section class="panel noprint">
+    <h2>2 · 设置</h2>
+    <div class="row">
+      <label class="field">
+        <span>网格</span>
+        <select id="grid">
+          <option value="4x6">4 列 x 6 行（24 词，格子最大）</option>
+          <option value="5x6" selected>5 列 x 6 行（30 词，推荐）</option>
+          <option value="5x7">5 列 x 7 行（35 词，复习量大）</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>打印张数</span>
+        <input type="number" id="count" value="20" min="1" max="200">
+      </label>
+
+      <label class="field">
+        <span>标题（印在卡片上）</span>
+        <input type="text" id="title" value="拼音宾果 · 连四">
+      </label>
+
+      <label class="field">
+        <span>种子（留空则随机）</span>
+        <input type="text" id="seed" placeholder="如 k3m9" spellcheck="false">
+      </label>
+    </div>
+
+    <label class="checkline" style="margin-top:16px">
+      <input type="checkbox" id="sameWords">
+      <span>每张卡词语相同，只打乱位置<span class="count" style="color:var(--muted)">（复习覆盖最均匀；不勾则从词池随机抽，惊喜感更强）</span></span>
+    </label>
+
+    <div class="row" style="margin-top:18px">
+      <button id="generate">生成卡片</button>
+      <button id="printCards" class="ghost" disabled>打印卡片</button>
+      <button id="printSheet" class="ghost" disabled>打印喊词单</button>
+    </div>
+
+    <p class="status" id="status">先选几个主题，然后点「生成卡片」。</p>
+    <p class="hint">打印时记得在浏览器打印对话框里关掉「页眉和页脚」，并把边距设为「默认」，否则页码和网址会印到卡片上。</p>
+  </section>
+
+  <section class="panel noprint rules">
+    <div class="minigrid" aria-hidden="true">
+      <i></i><i></i><i></i><i></i><i></i>
+      <i></i><i class="on"></i><i></i><i></i><i></i>
+      <i></i><i></i><i class="on"></i><i></i><i></i>
+      <i></i><i></i><i></i><i class="on"></i><i></i>
+      <i></i><i></i><i></i><i></i><i class="on"></i>
+    </div>
+    <p><strong>获胜条件：</strong>横排、竖排、或任意一条斜线上，连续标记 <strong>4 个</strong>格子。</p>
+  </section>
+
+  <nav class="tabs noprint" id="tabs" role="tablist">
+    <button role="tab" data-view="cards" aria-selected="true">卡片</button>
+    <button role="tab" data-view="caller" aria-selected="false">喊词器</button>
+    <button role="tab" data-view="sheet" aria-selected="false">喊词单</button>
+  </nav>
+
+  <div class="view" id="view-cards">
+    <div class="cards" id="cards"></div>
+  </div>
+
+  <div class="view" id="view-caller" hidden>
+    <div class="caller">
+      <div class="caller__stage" id="callerStage">
+        <p class="caller__empty">先生成卡片，然后点下面的按钮开始喊词。</p>
+      </div>
+      <div class="row" style="justify-content:center">
+        <button id="callNext" disabled>喊下一个词</button>
+        <button id="callReset" class="ghost" disabled>重新开始</button>
+      </div>
+      <p class="caller__meta" id="callerMeta"></p>
+    </div>
+    <div class="called">
+      <h2 style="font-size:14px;margin:0 0 10px;color:var(--muted)">已经喊过的词（孩子喊「赢了」时照这个核对）</h2>
+      <ol id="calledList"></ol>
+    </div>
+  </div>
+
+  <div class="view" id="view-sheet" hidden>
+    <div class="sheet">
+      <div class="sheet__head">
+        <h2 id="sheetTitle">拼音宾果 · 喊词单</h2>
+        <p id="sheetMeta"></p>
+      </div>
+      <div class="sheet__grid" id="sheetGrid"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="logic.js"></script>
+<script src="words.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
