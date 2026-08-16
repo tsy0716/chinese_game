@@ -114,45 +114,6 @@
     return deck;
   }
 
-  // ---------- 连线判定 ----------
-
-  /**
-   * 列出网格上所有「连续 need 格」的线：横、竖、右下斜、左下斜。
-   * 格子按从左到右、从上到下编号：第 r 行第 c 列 = r * cols + c
-   */
-  function lines(cols, rows, need) {
-    const out = [];
-    const at = (r, c) => r * cols + c;
-    const run = (r, c, dr, dc) =>
-      Array.from({ length: need }, (_, k) => at(r + dr * k, c + dc * k));
-
-    for (let r = 0; r < rows; r++)
-      for (let c = 0; c + need <= cols; c++) out.push(run(r, c, 0, 1)); // 横
-
-    for (let c = 0; c < cols; c++)
-      for (let r = 0; r + need <= rows; r++) out.push(run(r, c, 1, 0)); // 竖
-
-    for (let r = 0; r + need <= rows; r++)
-      for (let c = 0; c + need <= cols; c++) out.push(run(r, c, 1, 1)); // 捺 ↘
-
-    for (let r = 0; r + need <= rows; r++)
-      for (let c = need - 1; c < cols; c++) out.push(run(r, c, 1, -1)); // 撇 ↙
-
-    return out;
-  }
-
-  /**
-   * 判断已标记的格子里有没有连成 need 格的线。
-   * @returns {number[]|null} 获胜那条线的格子号；没赢则 null
-   */
-  function findWin(marked, cols, rows, need) {
-    const set = marked instanceof Set ? marked : new Set(marked);
-    for (const line of lines(cols, rows, need)) {
-      if (line.every((idx) => set.has(idx))) return line;
-    }
-    return null;
-  }
-
   // ---------- 自定义词表 ----------
 
   const CJK = /[㐀-䶿一-鿿豈-﫿]/;
@@ -210,8 +171,196 @@
     return chars.map((char, i) => ({ char, syllable: syllables[i] }));
   }
 
+  // ---------- 格子里的字号 ----------
+
+  /**
+   * 排版常数。CSS 里不再重复写这些数值 —— app.js 直接把它们设成行内样式，
+   * 免得改了一处忘了另一处，算出来的字号和实际渲染对不上。
+   */
+  const METRICS = {
+    hanziLineHeight: 1.1,
+    pinyinLineHeight: 1.25,
+    /**
+     * 拼音每个字母的字宽（单位 em），浏览器里用实际字体量出来的，不是估的。
+     *
+     * 一开始用「平均字宽 0.55」这一个常数，结果 m 实际有 0.855、l 只有 0.235，
+     * 含 m 的词（máng guǒ / gǎn mào / bāng máng）全都撑破格子。平均值在这里没有意义。
+     *
+     * 带调元音与基本元音等宽（声调符号不占额外宽度），所以查表前先去调号。
+     * 数值量自 PingFang SC；换个系统换个字体会有出入，靠 safety 兜底。
+     */
+    pinyinCharWidths: {
+      a: 0.559, b: 0.586, c: 0.547, d: 0.586, e: 0.555, f: 0.343, g: 0.591,
+      h: 0.556, i: 0.256, j: 0.267, k: 0.529, l: 0.235, m: 0.855, n: 0.559,
+      o: 0.586, p: 0.586, q: 0.586, r: 0.365, s: 0.505, t: 0.355, u: 0.560,
+      v: 0.482, w: 0.755, x: 0.509, y: 0.496, z: 0.487, ' ': 0.333,
+    },
+    /** 表里没有的字符按最宽的常见字母算，宁可保守 */
+    pinyinDefaultWidth: 0.59,
+    /** 格子的内边距，上下左右各 1mm */
+    cellPadMm: 2,
+    /** 格线粗细。格子的可用宽高要把它扣掉 —— 漏算这 0.4mm，密网格下会整片溢出 */
+    cellBorderMm: 0.4,
+    /** 汉字加拼音模式下，相邻两个字之间的间隙 */
+    colGapMm: 0.8,
+    /**
+     * 安全系数：算出来的尺寸只占可用空间的这个比例。
+     * 字宽表和字体度量都是在一台机器上量的，换个系统、换个中文字体
+     * 都会有出入。留 4% 余量，好过为最后 0.1mm 去搏。
+     */
+    safety: 0.96,
+    /** 汉字加拼音模式下，拼音相对汉字的比例 */
+    bothPinyinRatio: 0.40,
+    /** 折成两行至少要换来这么多字号增益，否则不值得折 —— 免得「hǎo chī」也被拆开 */
+    wrapGain: 1.15,
+    /**
+     * 字号已经到这个尺寸就算舒服了，此时才讲究「增益够不够大」；
+     * 还没到就有一点改善也要折 —— 否则密网格下会宁可用 5.2mm 也不肯折成 5.8mm，
+     * 恰好在最需要折行的时候挡住折行。
+     */
+    wrapComfortMm: 7,
+    /** 字号上限：太大反而难扫读，也挤掉了放棋子的地方 */
+    caps: { both: 14, hanzi: 20, pinyin: 10 },
+  };
+
+  /**
+   * 每种显示模式下允许的网格。
+   *
+   * 字号下限（6mm）由 test.js 的穷举验证兜底。但真正卡住上限的往往不是字号，
+   * 而是**格子还够不够孩子放棋子 / 画圈**：
+   *
+   *   - 纯汉字：字号极宽松（7 列 16 行排 112 词，字号还有 6.3mm）。这里停在
+   *     6x12 = 72 词，格子 32x18mm —— 再密下去格子就矮到没法标记了。
+   *   - 纯拼音：卡在宽度上。cháng fāng xíng 这类长拼音就算折成两行，5 列到
+   *     12 行（格子 38x18mm）字号已是 6.2mm，5x14 会掉到 5.2mm。所以 5x12 = 60 词
+   *     就是上限，6 列则完全放不下。
+   *   - 汉字+拼音：内容最高，保守停在 5x8。
+   */
+  const GRIDS = {
+    // both 保守停在 5x8 = 40 词 —— 这是单个主题（最小 41 词）还能独立铺满的上限，
+    // 而且三种模式里它的内容最高，格子不宜再密
+    both:   ['4x6', '4x8', '5x6', '5x7', '5x8'],
+    hanzi:  ['4x6', '5x6', '4x8', '5x8', '4x10', '5x10', '6x10', '5x12', '6x12'],
+    pinyin: ['4x6', '5x6', '4x8', '5x8', '4x10', '5x10', '4x12', '5x12'],
+  };
+
+  /** 带调元音 -> 基本元音。声调符号不占宽度，查字宽表前先去掉 */
+  const TONE_BASE = (() => {
+    const map = { 'ü': 'u' };
+    const groups = [
+      ['a', 'āáǎà'], ['e', 'ēéěè'], ['i', 'īíǐì'], ['o', 'ōóǒò'],
+      ['u', 'ūúǔù'], ['u', 'ǖǘǚǜ'], ['n', 'ńňǹ'],
+    ];
+    for (const [base, marked] of groups) {
+      for (const ch of marked) map[ch] = base;
+    }
+    return map;
+  })();
+
+  /** 一段拼音有多宽，单位 em（乘上字号就是实际宽度） */
+  function pinyinEms(text) {
+    const W = METRICS.pinyinCharWidths;
+    let sum = 0;
+    for (const ch of String(text).toLowerCase()) {
+      const base = TONE_BASE[ch] || ch;
+      sum += W[base] !== undefined ? W[base] : METRICS.pinyinDefaultWidth;
+    }
+    return sum;
+  }
+
+  /**
+   * 把拼音按音节折成最多 maxLines 行，尽量让最宽的一行窄一点。
+   * 只在纯拼音模式下用 —— 汉字加拼音模式里拼音是压在每个字头上的，不能折。
+   *
+   * @returns {string[]} 折不出这么多行时，返回的行数会少于 maxLines
+   */
+  function splitPinyinLines(pinyin, maxLines) {
+    const syllables = String(pinyin).trim().split(/\s+/).filter(Boolean);
+    if (maxLines <= 1 || syllables.length <= 1) return [syllables.join(' ')];
+
+    let best = null;
+    for (let i = 1; i < syllables.length; i++) {
+      const lines = [syllables.slice(0, i).join(' '), syllables.slice(i).join(' ')];
+      const widest = Math.max(...lines.map(pinyinEms));
+      if (!best || widest < best.widest) best = { lines, widest };
+    }
+    return best.lines;
+  }
+
+  /**
+   * 算一个格子里该用多大的字。
+   *
+   * 三个约束取最小：字号上限、格子高度、格子宽度。放在这里而不是 CSS，
+   * 是为了能对「每个真实词 x 每种网格」跑穷举验证。
+   *
+   * @param {'both'|'hanzi'|'pinyin'} mode
+   * @param {number} cellW, cellH  格子宽高，单位 mm
+   * @returns {{hanzi:number, pinyin:number}} 单位 mm，0 表示这一项不显示
+   */
+  function cellFontSizes({ mode, cellW, cellH, hanzi, pinyin, aligned = true }) {
+    const M = METRICS;
+    // 可用空间要同时扣掉内边距和格线，再乘安全系数
+    const gone = M.cellPadMm + M.cellBorderMm;
+    const w = (cellW - gone) * M.safety;
+    const h = (cellH - gone) * M.safety;
+    const chars = Array.from(String(hanzi)).length || 1;
+    const syllables = String(pinyin).trim().split(/\s+/).filter(Boolean);
+    const widestEms = syllables.length ? Math.max(...syllables.map(pinyinEms)) : 1;
+
+    if (mode === 'hanzi') {
+      return {
+        hanzi: Math.min(M.caps.hanzi, h / M.hanziLineHeight, w / chars),
+        pinyin: 0,
+      };
+    }
+
+    if (mode === 'pinyin') {
+      // 纯拼音模式竖向空间富余、横向吃紧，所以允许长拼音折成两行 ——
+      // 不折的话 cháng fāng xíng 这种只能缩到 5.5mm，折了能到 8mm 以上
+      const fit = (lines) => Math.min(
+        M.caps.pinyin,
+        h / (lines.length * M.pinyinLineHeight),
+        w / Math.max(...lines.map(pinyinEms))
+      );
+
+      const one = splitPinyinLines(pinyin, 1);
+      const two = splitPinyinLines(pinyin, 2);
+      const fit1 = fit(one);
+      if (two.length !== 2) return { hanzi: 0, pinyin: fit1, pinyinLines: one };
+
+      const fit2 = fit(two);
+      // 字号已经舒服了，就得换来明显更大的字才值得折（免得 hǎo chī 被无谓拆开）；
+      // 字号本来就紧，有一点改善就折
+      const worthIt = fit1 >= M.wrapComfortMm
+        ? fit2 > fit1 * M.wrapGain
+        : fit2 > fit1;
+
+      return worthIt
+        ? { hanzi: 0, pinyin: fit2, pinyinLines: two }
+        : { hanzi: 0, pinyin: fit1, pinyinLines: one };
+    }
+
+    if (mode === 'both') {
+      // 上下叠放，所以高度按「拼音行 + 汉字行」一起算
+      const stack = M.pinyinLineHeight * M.bothPinyinRatio + M.hanziLineHeight;
+      // aligned 时每个汉字各占一列，列与列之间还有间隙，得从可用宽度里先扣掉
+      const colW = aligned ? (w - M.colGapMm * (chars - 1)) / chars : w / chars;
+      const hz = Math.min(M.caps.both, h / stack, colW);
+      // aligned：列宽取汉字和该音节中较宽的 —— 拼音不能把列撑得比汉字还宽
+      // 不 aligned：音节数和汉字数对不上（自定义词表里的连写拼音），整串压在整词上方，
+      //            这时约束是整串拼音的总宽，不是单个音节
+      const py = aligned
+        ? Math.min(hz * M.bothPinyinRatio, colW / widestEms)
+        : Math.min(hz * M.bothPinyinRatio, w / pinyinEms(pinyin));
+      return { hanzi: hz, pinyin: py };
+    }
+
+    throw new Error(`不认识的显示模式：${mode}`);
+  }
+
   return {
     makeRng, shuffle, pickN, buildCard, buildDeck,
-    lines, findWin, parseWordList, alignPinyin,
+    parseWordList, alignPinyin, cellFontSizes, splitPinyinLines, pinyinEms,
+    METRICS, GRIDS,
   };
 });

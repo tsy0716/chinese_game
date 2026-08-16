@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>拼音宾果 · 连四</title>
+<title>拼音宾果 · 词语卡片</title>
 <style>
   :root {
     --ink: #1a1a1a;
@@ -132,19 +132,6 @@
 
   .view[hidden] { display: none; }
 
-  /* ---------- 规则速查 ---------- */
-
-  .rules { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-  .rules p { margin: 0; font-size: 14px; }
-  .minigrid {
-    display: grid;
-    grid-template-columns: repeat(5, 15px);
-    grid-auto-rows: 15px;
-    gap: 2px;
-  }
-  .minigrid i { background: #e6e4e0; border-radius: 2px; }
-  .minigrid i.on { background: var(--accent); }
-
   /* ---------- 卡片 ---------- */
 
   .cards {
@@ -214,32 +201,36 @@
     overflow: hidden;
   }
 
-  /* 逐字对齐：每个汉字和它的音节各占一列 */
+  /* 字号由 logic.js 的 cellFontSizes 算好后写成行内样式 —— 放在 JS 里才能
+     对「每个真实词 x 每种网格 x 每种模式」跑穷举验证。这里只管排布。
+     行高同样来自 logic.js 的 METRICS（app.js 设成 --lh-hz / --lh-py），
+     免得改了一处忘了另一处，算出来的尺寸和实际渲染对不上。 */
+
   .word { display: flex; align-items: flex-end; justify-content: center; gap: .8mm; }
   .word .ch { display: flex; flex-direction: column; align-items: center; }
 
-  /* 汉字字号：按格宽和字数平摊，但封顶 14mm，免得单字词一个字占满整格 */
-  .word { --hz: min(14mm, calc(var(--cw) / (var(--n) + 0.8))); }
-
   .word .py {
-    /* 必须从「封顶后」的汉字字号推导 —— 直接用未封顶的算式，
-       单字词的拼音会偏大，行高一矮就把格子顶破（5x8 上实测 62 格溢出）。
-       第二个上限按格宽平摊，挡住 cháng / zhuàng 这种长音节撑宽格子。 */
-    font-size: min(calc(var(--hz) * 0.40), calc(var(--cw) / var(--n) * 0.30));
-    line-height: 1.25;
+    line-height: var(--lh-py);
     color: #444;
     white-space: nowrap;
   }
   .word .hz {
-    font-size: var(--hz);
-    line-height: 1.1;
+    line-height: var(--lh-hz);
     font-weight: 500;
+    white-space: nowrap;
   }
+
+  /* 纯汉字：一行字，没有拼音 */
+  .word--hanzi { gap: 0; }
+
+  /* 纯拼音：没有汉字，长拼音折成两行 */
+  .word--pinyin { flex-direction: column; align-items: center; gap: 0; }
+  .word--pinyin .py { color: #000; }
 
   /* 音节数和汉字数对不上时（自定义词表里的连写拼音）整串居中，不硬凑 */
   .word--loose { flex-direction: column; align-items: center; gap: 0; }
 
-  /* 喊词器上的大字版：不依赖 --cw / --n，直接给固定字号 */
+  /* 喊词器上的大字版：固定字号，不走格子那套计算 */
   .word--big { gap: 10px; }
   .word--big .py { font-size: 30px; color: #555; }
   .word--big .hz { font-size: 90px; }
@@ -357,8 +348,8 @@
 <div class="wrap">
 
   <header class="noprint">
-    <h1>拼音宾果 · 连四</h1>
-    <p class="sub">裁判喊词，选手在卡片上找词并标记。横、竖、斜任意方向连成 4 个即获胜。</p>
+    <h1>拼音宾果 · 词语卡片</h1>
+    <p class="sub">生成可打印的中文词语卡片。裁判喊词，选手在自己卡上找词并标记 —— 连几个算赢、怎么标记，由你自己定。</p>
   </header>
 
   <section class="panel noprint">
@@ -376,13 +367,17 @@
     <h2>2 · 设置</h2>
     <div class="row">
       <label class="field">
-        <span>网格</span>
-        <select id="grid">
-          <option value="4x6">4 列 x 6 行（24 词，格子最大）</option>
-          <option value="5x6" selected>5 列 x 6 行（30 词，推荐）</option>
-          <option value="5x7">5 列 x 7 行（35 词，复习量大）</option>
-          <option value="5x8">5 列 x 8 行（40 词，格子最密，一局最长）</option>
+        <span>格子里印什么</span>
+        <select id="mode">
+          <option value="both" selected>汉字 + 拼音</option>
+          <option value="hanzi">只印汉字</option>
+          <option value="pinyin">只印拼音</option>
         </select>
+      </label>
+
+      <label class="field">
+        <span>网格</span>
+        <select id="grid"></select>
       </label>
 
       <label class="field">
@@ -392,7 +387,7 @@
 
       <label class="field">
         <span>标题（印在卡片上）</span>
-        <input type="text" id="title" value="拼音宾果 · 连四">
+        <input type="text" id="title" value="拼音宾果">
       </label>
 
       <label class="field">
@@ -414,17 +409,6 @@
 
     <p class="status" id="status">先选几个主题，然后点「生成卡片」。</p>
     <p class="hint">纸张选 A4 竖向，一页一张卡。页眉页脚开着也不会把卡片劈成两页，但页码和网址会印在卡片旁边 —— 想干净一点就在打印对话框里关掉「页眉和页脚」。</p>
-  </section>
-
-  <section class="panel noprint rules">
-    <div class="minigrid" aria-hidden="true">
-      <i></i><i></i><i></i><i></i><i></i>
-      <i></i><i class="on"></i><i></i><i></i><i></i>
-      <i></i><i></i><i class="on"></i><i></i><i></i>
-      <i></i><i></i><i></i><i class="on"></i><i></i>
-      <i></i><i></i><i></i><i></i><i class="on"></i>
-    </div>
-    <p><strong>获胜条件：</strong>横排、竖排、或任意一条斜线上，连续标记 <strong>4 个</strong>格子。</p>
   </section>
 
   <nav class="tabs noprint" id="tabs" role="tablist">

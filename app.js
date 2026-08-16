@@ -10,14 +10,15 @@
   const L = window.BingoLogic;
   const W = window.BingoWords;
 
-  const NEED = 4;            // 连几个算赢
   const PAGE_INNER_MM = 190; // A4 竖版扣掉 10mm 页边距后的可用宽度
   const GRID_MM = 210;       // 网格总高；与 index.html 里的 --card-h 配套（24 + 4 + 210 = 238）
+
+  const MODE_LABEL = { both: '汉字+拼音', hanzi: '只印汉字', pinyin: '只印拼音' };
 
   const $ = (id) => document.getElementById(id);
 
   const el = {
-    packs: $('packs'), custom: $('custom'), grid: $('grid'), count: $('count'),
+    packs: $('packs'), custom: $('custom'), mode: $('mode'), grid: $('grid'), count: $('count'),
     title: $('title'), seed: $('seed'), sameWords: $('sameWords'),
     generate: $('generate'), printCards: $('printCards'), printSheet: $('printSheet'),
     status: $('status'), tabs: $('tabs'), cards: $('cards'),
@@ -26,8 +27,12 @@
     sheetTitle: $('sheetTitle'), sheetMeta: $('sheetMeta'), sheetGrid: $('sheetGrid'),
   };
 
+  // 行高从 logic.js 的 METRICS 来，CSS 通过这两个变量读 —— 保证算尺寸和实际渲染用同一组数
+  el.cards.style.setProperty('--lh-hz', L.METRICS.hanziLineHeight);
+  el.cards.style.setProperty('--lh-py', L.METRICS.pinyinLineHeight);
+
   /** 本次生成的结果 */
-  let state = { pool: [], deck: [], cols: 0, rows: 0, seed: '' };
+  let state = { pool: [], deck: [], cols: 0, rows: 0, seed: '', mode: 'both' };
   /** 喊词器状态 */
   let round = { queue: [], called: [] };
 
@@ -71,6 +76,32 @@
     const [cols, rows] = el.grid.value.split('x').map(Number);
     return { cols, rows };
   }
+
+  /**
+   * 不同模式能用的网格不一样（纯汉字最密、纯拼音卡在宽度上），
+   * 所以换模式时重建下拉。原来选的网格如果新模式也支持就保留。
+   */
+  function rebuildGridOptions() {
+    const mode = el.mode.value;
+    const keep = el.grid.value;
+    const grids = L.GRIDS[mode];
+
+    el.grid.textContent = '';
+    for (const g of grids) {
+      const [cols, rows] = g.split('x').map(Number);
+      const opt = document.createElement('option');
+      opt.value = g;
+      opt.textContent = `${cols} 列 x ${rows} 行（${cols * rows} 词，格子 ` +
+        `${Math.round(PAGE_INNER_MM / cols)}x${Math.round(GRID_MM / rows)}mm）`;
+      el.grid.appendChild(opt);
+    }
+    el.grid.value = grids.includes(keep) ? keep : (grids.includes('5x6') ? '5x6' : grids[0]);
+  }
+
+  el.mode.addEventListener('change', () => {
+    rebuildGridOptions();
+    reportPool();
+  });
 
   function say(message, isError) {
     el.status.textContent = message;
@@ -129,7 +160,7 @@
     }
 
     el.seed.value = seed;
-    state = { pool, deck, cols, rows, seed };
+    state = { pool, deck, cols, rows, seed, mode: el.mode.value };
 
     renderCards();
     renderSheet();
@@ -140,43 +171,73 @@
     el.callNext.disabled = false;
     el.callReset.disabled = false;
 
-    say(`已生成 ${deck.length} 张卡（种子 ${seed}）。词池 ${pool.length} 词，` +
-        `每张 ${cols * rows} 格，连 ${NEED} 个获胜。`);
+    say(`已生成 ${deck.length} 张卡（种子 ${seed}）。${MODE_LABEL[state.mode]}，` +
+        `词池 ${pool.length} 词，每张 ${cols * rows} 格。`);
   });
 
   // ---------- 渲染一个词（拼音逐字对齐汉字） ----------
 
-  function renderWord(word, big) {
-    const wrap = document.createElement('div');
-    wrap.className = big ? 'word word--big' : 'word';
+  function line(cls, text, sizeMm) {
+    const d = document.createElement('div');
+    d.className = cls;
+    d.textContent = text;
+    if (sizeMm) d.style.fontSize = sizeMm + 'mm';
+    return d;
+  }
 
+  /** 喊词器上的大字版：不管卡片是什么模式，都把汉字和拼音一起显示给老师看 */
+  function renderBigWord(word) {
+    const wrap = document.createElement('div');
+    wrap.className = 'word word--big';
     const pairs = L.alignPinyin(word.hanzi, word.pinyin);
-    const chars = Array.from(word.hanzi);
-    wrap.style.setProperty('--n', chars.length);
+    if (pairs) {
+      for (const { char, syllable } of pairs) {
+        const col = document.createElement('div');
+        col.className = 'ch';
+        col.append(line('py', syllable), line('hz', char));
+        wrap.appendChild(col);
+      }
+    } else {
+      wrap.classList.add('word--loose');
+      wrap.append(line('py', word.pinyin), line('hz', word.hanzi));
+    }
+    return wrap;
+  }
+
+  /** 卡片格子里的一个词。字号由 logic.js 按模式和格子尺寸算好 */
+  function renderCellWord(word, mode, cellW, cellH) {
+    const wrap = document.createElement('div');
+    wrap.className = 'word word--' + mode;
+
+    if (mode === 'hanzi') {
+      const size = L.cellFontSizes({ mode, cellW, cellH, hanzi: word.hanzi, pinyin: word.pinyin });
+      wrap.appendChild(line('hz', word.hanzi, size.hanzi));
+      return wrap;
+    }
+
+    if (mode === 'pinyin') {
+      const size = L.cellFontSizes({ mode, cellW, cellH, hanzi: word.hanzi, pinyin: word.pinyin });
+      for (const text of size.pinyinLines) wrap.appendChild(line('py', text, size.pinyin));
+      return wrap;
+    }
+
+    // 汉字 + 拼音：逐字对齐，一个音节压在一个汉字上方
+    const pairs = L.alignPinyin(word.hanzi, word.pinyin);
+    const size = L.cellFontSizes({
+      mode, cellW, cellH, hanzi: word.hanzi, pinyin: word.pinyin, aligned: !!pairs,
+    });
 
     if (pairs) {
       for (const { char, syllable } of pairs) {
         const col = document.createElement('div');
         col.className = 'ch';
-        const py = document.createElement('div');
-        py.className = 'py';
-        py.textContent = syllable;
-        const hz = document.createElement('div');
-        hz.className = 'hz';
-        hz.textContent = char;
-        col.append(py, hz);
+        col.append(line('py', syllable, size.pinyin), line('hz', char, size.hanzi));
         wrap.appendChild(col);
       }
     } else {
       // 音节对不上（多半是自定义词表里写了连写拼音）—— 整串居中，不硬凑
       wrap.classList.add('word--loose');
-      const py = document.createElement('div');
-      py.className = 'py';
-      py.textContent = word.pinyin;
-      const hz = document.createElement('div');
-      hz.className = 'hz';
-      hz.textContent = word.hanzi;
-      wrap.append(py, hz);
+      wrap.append(line('py', word.pinyin, size.pinyin), line('hz', word.hanzi, size.hanzi));
     }
     return wrap;
   }
@@ -184,8 +245,10 @@
   // ---------- 卡片 ----------
 
   function renderCards() {
-    const { deck, cols, rows } = state;
+    const { deck, cols, rows, mode } = state;
     const title = el.title.value.trim() || '拼音宾果';
+    const cellW = PAGE_INNER_MM / cols;
+    const cellH = GRID_MM / rows;
     el.cards.textContent = '';
 
     for (const card of deck) {
@@ -214,13 +277,12 @@
       grid.className = 'card__grid';
       grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
       // 行高写死，不用 1fr —— 卡片高度必须确定，否则打印时可能被劈成两页
-      grid.style.gridTemplateRows = `repeat(${rows}, ${GRID_MM / rows}mm)`;
-      grid.style.setProperty('--cw', (PAGE_INNER_MM / cols) + 'mm');
+      grid.style.gridTemplateRows = `repeat(${rows}, ${cellH}mm)`;
 
       for (const word of card.cells) {
         const cell = document.createElement('div');
         cell.className = 'cell';
-        cell.appendChild(renderWord(word));
+        cell.appendChild(renderCellWord(word, mode, cellW, cellH));
         grid.appendChild(cell);
       }
 
@@ -257,7 +319,7 @@
     round.called.push(word);
 
     el.callerStage.textContent = '';
-    el.callerStage.appendChild(renderWord(word, true));
+    el.callerStage.appendChild(renderBigWord(word));
 
     const li = document.createElement('li');
     li.textContent = word.hanzi;
@@ -277,7 +339,7 @@
     el.sheetTitle.textContent = (el.title.value.trim() || '拼音宾果') + ' · 喊词单';
     el.sheetMeta.textContent =
       `词池 ${state.pool.length} 词 · 卡片种子 ${state.seed} · ` +
-      `${state.cols}x${state.rows} 格 · 连 ${NEED} 个获胜 —— 喊过的词打勾`;
+      `${state.cols}x${state.rows} 格 · ${MODE_LABEL[state.mode]} —— 喊过的词打勾`;
 
     el.sheetGrid.textContent = '';
     for (const word of state.pool) {
@@ -322,5 +384,6 @@
   el.printCards.addEventListener('click', () => printWith('print-cards'));
   el.printSheet.addEventListener('click', () => printWith('print-sheet'));
 
+  rebuildGridOptions();
   reportPool();
 })();

@@ -161,75 +161,6 @@ test('buildDeck: 默认模式下大词池会抽出不同的词，不只是换位
   assert.ok(new Set(sorted).size > 1, '20 选 16 应当抽出不同的词语组合');
 });
 
-// ---------- lines：所有可能的连线 ----------
-
-test('lines: 5列x6行 连4 共 39 条线（横12 + 竖15 + 撇6 + 捺6）', () => {
-  assert.strictEqual(L.lines(5, 6, 4).length, 39);
-});
-
-test('lines: 4列x6行 连4 共 24 条线', () => {
-  assert.strictEqual(L.lines(4, 6, 4).length, 24);
-});
-
-test('lines: 每条线都是 need 个格子，且格子号不越界', () => {
-  const all = L.lines(5, 6, 4);
-  for (const line of all) {
-    assert.strictEqual(line.length, 4);
-    for (const idx of line) {
-      assert.ok(idx >= 0 && idx < 30, `格子号越界: ${idx}`);
-    }
-  }
-});
-
-test('lines: 网格放不下 need 时返回空', () => {
-  assert.deepStrictEqual(L.lines(3, 3, 4), []);
-});
-
-// ---------- findWin：判定获胜 ----------
-// 5列x6行的格子编号：第 r 行第 c 列 = r * 5 + c
-
-test('findWin: 认出横排连4', () => {
-  const win = L.findWin([5, 6, 7, 8], 5, 6, 4);
-  assert.deepStrictEqual(win, [5, 6, 7, 8]);
-});
-
-test('findWin: 不把跨行的连续编号当成横排', () => {
-  // 3,4 在第0行末尾，5,6 在第1行开头 —— 编号连续但不同行，不算赢
-  assert.strictEqual(L.findWin([3, 4, 5, 6], 5, 6, 4), null);
-});
-
-test('findWin: 认出竖排连4', () => {
-  const win = L.findWin([2, 7, 12, 17], 5, 6, 4);
-  assert.deepStrictEqual(win, [2, 7, 12, 17]);
-});
-
-test('findWin: 认出右下斜连4', () => {
-  const win = L.findWin([0, 6, 12, 18], 5, 6, 4);
-  assert.deepStrictEqual(win, [0, 6, 12, 18]);
-});
-
-test('findWin: 认出左下斜连4', () => {
-  const win = L.findWin([3, 7, 11, 15], 5, 6, 4);
-  assert.deepStrictEqual(win, [3, 7, 11, 15]);
-});
-
-test('findWin: 只连3不算赢', () => {
-  assert.strictEqual(L.findWin([5, 6, 7], 5, 6, 4), null);
-});
-
-test('findWin: 散落4个不算赢', () => {
-  assert.strictEqual(L.findWin([0, 7, 19, 26], 5, 6, 4), null);
-});
-
-test('findWin: 一个格子都没标不算赢', () => {
-  assert.strictEqual(L.findWin([], 5, 6, 4), null);
-});
-
-test('findWin: 多标了无关格子也照样认出获胜线', () => {
-  const win = L.findWin([5, 6, 7, 8, 0, 29], 5, 6, 4);
-  assert.deepStrictEqual(win, [5, 6, 7, 8]);
-});
-
 // ---------- parseWordList：自定义词表 ----------
 
 test('parseWordList: 解析「汉字 拼音」每行一个', () => {
@@ -312,4 +243,238 @@ test('alignPinyin: 汉字超出基本平面时按字符算，不按码元算', (
     { char: '𠀋', syllable: 'zhàng' },
     { char: '田', syllable: 'tián' },
   ]);
+});
+
+// ---------- cellFontSizes：格子里的字号 ----------
+//
+// 字号计算放在这里而不是 CSS，就是为了能对「每个真实词 x 每种网格」跑穷举验证：
+// 印出来才发现字被切掉或者小到看不清，就太晚了。
+
+const CELL = { cellW: 38, cellH: 35 }; // 5x6 网格的一格，单位 mm
+
+test('cellFontSizes: 纯汉字模式不出拼音', () => {
+  const got = L.cellFontSizes({ mode: 'hanzi', ...CELL, hanzi: '苹果', pinyin: 'píng guǒ' });
+  assert.ok(got.hanzi > 0);
+  assert.strictEqual(got.pinyin, 0);
+});
+
+test('cellFontSizes: 纯拼音模式不出汉字', () => {
+  const got = L.cellFontSizes({ mode: 'pinyin', ...CELL, hanzi: '苹果', pinyin: 'píng guǒ' });
+  assert.strictEqual(got.hanzi, 0);
+  assert.ok(got.pinyin > 0);
+});
+
+test('cellFontSizes: 汉字加拼音模式两样都出', () => {
+  const got = L.cellFontSizes({ mode: 'both', ...CELL, hanzi: '苹果', pinyin: 'píng guǒ' });
+  assert.ok(got.hanzi > 0 && got.pinyin > 0);
+});
+
+test('cellFontSizes: 未知模式报错，不静默出空格', () => {
+  assert.throws(
+    () => L.cellFontSizes({ mode: 'nope', ...CELL, hanzi: '苹果', pinyin: 'píng guǒ' }),
+    /模式/
+  );
+});
+
+test('cellFontSizes: 纯汉字模式下字越多字号越小', () => {
+  const one = L.cellFontSizes({ mode: 'hanzi', ...CELL, hanzi: '鱼', pinyin: 'yú' });
+  const four = L.cellFontSizes({ mode: 'hanzi', ...CELL, hanzi: '公共汽车', pinyin: 'gōng gòng qì chē' });
+  assert.ok(four.hanzi < one.hanzi, `四字 ${four.hanzi} 应当小于单字 ${one.hanzi}`);
+});
+
+test('cellFontSizes: 纯拼音模式下拼音越长字号越小', () => {
+  const short = L.cellFontSizes({ mode: 'pinyin', ...CELL, hanzi: '鱼', pinyin: 'yú' });
+  const long = L.cellFontSizes({ mode: 'pinyin', ...CELL, hanzi: '公共汽车', pinyin: 'gōng gòng qì chē' });
+  assert.ok(long.pinyin < short.pinyin, `长拼音 ${long.pinyin} 应当小于短拼音 ${short.pinyin}`);
+});
+
+test('cellFontSizes: 格子矮下来时字号跟着缩，不硬撑', () => {
+  const tall = L.cellFontSizes({ mode: 'hanzi', cellW: 38, cellH: 35, hanzi: '苹果', pinyin: 'píng guǒ' });
+  const short = L.cellFontSizes({ mode: 'hanzi', cellW: 38, cellH: 12, hanzi: '苹果', pinyin: 'píng guǒ' });
+  assert.ok(short.hanzi < tall.hanzi, `矮格 ${short.hanzi} 应当小于高格 ${tall.hanzi}`);
+});
+
+test('cellFontSizes: 汉字加拼音模式下，宽高都不吃紧时拼音是汉字的四成', () => {
+  const got = L.cellFontSizes({ mode: 'both', cellW: 80, cellH: 80, hanzi: '苹果', pinyin: 'píng guǒ' });
+  assert.ok(
+    Math.abs(got.pinyin / got.hanzi - 0.4) < 0.02,
+    `拼音汉字比例是 ${(got.pinyin / got.hanzi).toFixed(3)}，应当接近 0.40`
+  );
+});
+
+test('cellFontSizes: 拼音对不齐时（连写），整串拼音也不会撑破格子', () => {
+  // 自定义词表里粘连写拼音、或者音节数和汉字数对不上时，走的是「整串居中」这条路。
+  // 它横跨整格，所以未必比逐字对齐时小 —— 要保证的是不溢出。
+  const cases = [
+    ['对不起', 'duìbùqǐ'],
+    ['没关系', 'méiguānxi'],
+    ['苹果', 'píng guǒ zi'],          // 音节比汉字多
+    ['公共汽车', 'gōnggòngqìchē'],
+    ['长方形', 'chángfāngxíng'],
+  ];
+  for (const grid of ['4x6', '5x8']) {
+    const [cols, rows] = grid.split('x').map(Number);
+    const cell = { cellW: 190 / cols, cellH: 210 / rows };
+    const availW = cell.cellW - L.METRICS.cellPadMm;
+    for (const [hanzi, pinyin] of cases) {
+      const got = L.cellFontSizes({ mode: 'both', ...cell, hanzi, pinyin, aligned: false });
+      assert.ok(got.pinyin > 0, `${grid} 的「${hanzi}」拼音字号成了 0`);
+      assert.ok(
+        got.pinyin * L.pinyinEms(pinyin) <= availW + 1e-6,
+        `${grid} 的「${hanzi}」整串拼音溢出：` +
+          `${(got.pinyin * L.pinyinEms(pinyin)).toFixed(1)} > ${availW.toFixed(1)}mm`
+      );
+    }
+  }
+});
+
+// ---------- 穷举：每个真实词 x 每种网格 x 每种模式 ----------
+
+const { packs } = require('./words.js');
+const ALL_WORDS = packs.flatMap((p) => p.words);
+const GRID_W = 190, GRID_H = 210; // 卡片上网格区域的尺寸（mm），与 index.html 一致
+const M = L.METRICS;
+
+/** 把 '4x6' 这样的写法换算成一个格子的宽高 */
+function cellOf(grid) {
+  const [cols, rows] = grid.split('x').map(Number);
+  return { cellW: GRID_W / cols, cellH: GRID_H / rows };
+}
+
+/** 一个格子里真正能放东西的宽高（扣掉内边距和格线） */
+function availOf(cell) {
+  const gone = M.cellPadMm + M.cellBorderMm;
+  return { w: cell.cellW - gone, h: cell.cellH - gone };
+}
+
+/** 按算出来的字号，推算这个词实际占多大 */
+function contentBox(mode, size, hanzi, pinyin) {
+  const chars = Array.from(hanzi).length;
+  const syllables = pinyin.split(/\s+/).filter(Boolean);
+  const widest = Math.max(...syllables.map(L.pinyinEms));
+  const pyLine = size.pinyin * M.pinyinLineHeight;
+  const hzLine = size.hanzi * M.hanziLineHeight;
+
+  if (mode === 'hanzi') return { w: size.hanzi * chars, h: hzLine };
+  if (mode === 'pinyin') {
+    // 长拼音会折成两行，宽高都得按实际折出来的行算
+    const widestLine = Math.max(...size.pinyinLines.map(L.pinyinEms));
+    return {
+      w: size.pinyin * widestLine,
+      h: pyLine * size.pinyinLines.length,
+    };
+  }
+  // both：每个汉字一列，列宽取「汉字」和「该音节」中较宽的那个，列之间还有间隙
+  const colW = Math.max(size.hanzi, widest * size.pinyin);
+  return { w: colW * chars + M.colGapMm * (chars - 1), h: pyLine + hzLine };
+}
+
+for (const mode of ['both', 'hanzi', 'pinyin']) {
+  test(`cellFontSizes 穷举[${mode}]：${ALL_WORDS.length} 个词在每种网格里都不溢出`, () => {
+    for (const grid of L.GRIDS[mode]) {
+      const cell = cellOf(grid);
+      const { w: availW, h: availH } = availOf(cell);
+      for (const word of ALL_WORDS) {
+        const size = L.cellFontSizes({ mode, ...cell, hanzi: word.hanzi, pinyin: word.pinyin });
+        const box = contentBox(mode, size, word.hanzi, word.pinyin);
+        assert.ok(
+          box.w <= availW + 1e-6,
+          `${grid} 的格子里「${word.hanzi}」横向溢出：${box.w.toFixed(1)} > ${availW.toFixed(1)}mm`
+        );
+        assert.ok(
+          box.h <= availH + 1e-6,
+          `${grid} 的格子里「${word.hanzi}」纵向溢出：${box.h.toFixed(1)} > ${availH.toFixed(1)}mm`
+        );
+      }
+    }
+  });
+
+  test(`cellFontSizes 穷举[${mode}]：每种网格下都没有小到看不清的字`, () => {
+    // 下限按模式分开定：汉字笔画密，6mm（约 17pt）以下小学生扫读就吃力；
+    // 拼音是拉丁小写字母，笔画稀疏，5.5mm（约 15.6pt）仍然清楚。
+    const FLOOR = mode === 'pinyin' ? 5.5 : 6;
+    for (const grid of L.GRIDS[mode]) {
+      const cell = cellOf(grid);
+      for (const word of ALL_WORDS) {
+        const size = L.cellFontSizes({ mode, ...cell, hanzi: word.hanzi, pinyin: word.pinyin });
+        const main = mode === 'pinyin' ? size.pinyin : size.hanzi;
+        assert.ok(
+          main >= FLOOR,
+          `${grid} 的格子里「${word.hanzi}」主字号只有 ${main.toFixed(1)}mm，低于 ${FLOOR}mm`
+        );
+      }
+    }
+  });
+}
+
+test('GRIDS: 每种模式都给出了可选网格，且都是「列x行」格式', () => {
+  for (const mode of ['both', 'hanzi', 'pinyin']) {
+    assert.ok(L.GRIDS[mode].length > 0, `${mode} 没有可选网格`);
+    for (const g of L.GRIDS[mode]) {
+      assert.match(g, /^\d+x\d+$/, `${mode} 的网格写法不对：${g}`);
+    }
+  }
+});
+
+test('GRIDS: 默认模式（汉字+拼音）的每种网格，单选一个主题就能铺满', () => {
+  const smallest = Math.min(...packs.map((p) => p.words.length));
+  for (const g of L.GRIDS.both) {
+    const [cols, rows] = g.split('x').map(Number);
+    assert.ok(
+      cols * rows <= smallest,
+      `网格 ${g} 要 ${cols * rows} 格，但最小的主题只有 ${smallest} 个词`
+    );
+  }
+});
+
+test('GRIDS: 最密的网格，全部主题加起来也铺得满（页面会提示多选主题）', () => {
+  const total = packs.reduce((sum, p) => sum + p.words.length, 0);
+  const all = [...L.GRIDS.both, ...L.GRIDS.hanzi, ...L.GRIDS.pinyin];
+  const densest = Math.max(...all.map((g) => {
+    const [cols, rows] = g.split('x').map(Number);
+    return cols * rows;
+  }));
+  assert.ok(densest <= total, `最密网格要 ${densest} 格，但全部词加起来只有 ${total} 个`);
+});
+
+// ---------- splitPinyinLines：长拼音折行 ----------
+
+test('splitPinyinLines: 单音节折不出两行', () => {
+  assert.deepStrictEqual(L.splitPinyinLines('yú', 2), ['yú']);
+});
+
+test('splitPinyinLines: 折在音节边界上，不会把音节劈开', () => {
+  for (const line of L.splitPinyinLines('cháng fāng xíng', 2)) {
+    for (const syl of line.split(' ')) {
+      assert.ok(['cháng', 'fāng', 'xíng'].includes(syl), `音节被劈开了：${syl}`);
+    }
+  }
+});
+
+test('splitPinyinLines: 两行尽量等长，最长那行要比不折时短', () => {
+  const whole = 'gōng gòng qì chē';
+  const lines = L.splitPinyinLines(whole, 2);
+  assert.strictEqual(lines.length, 2);
+  assert.ok(
+    Math.max(...lines.map((l) => l.length)) < whole.length,
+    `折完最长行 ${Math.max(...lines.map((l) => l.length))} 不比整串 ${whole.length} 短`
+  );
+});
+
+test('splitPinyinLines: 折行后不丢音节也不加音节', () => {
+  const whole = 'zhōng qiū jié';
+  assert.strictEqual(L.splitPinyinLines(whole, 2).join(' '), whole);
+});
+
+test('splitPinyinLines: maxLines 为 1 时原样返回', () => {
+  assert.deepStrictEqual(L.splitPinyinLines('píng guǒ', 1), ['píng guǒ']);
+});
+
+test('cellFontSizes: 纯拼音模式下，长拼音靠折两行换来更大的字号', () => {
+  const cell = { cellW: 38, cellH: 26.25 }; // 5x8 的一格
+  const got = L.cellFontSizes({ mode: 'pinyin', ...cell, hanzi: '长方形', pinyin: 'cháng fāng xíng' });
+  assert.strictEqual(got.pinyinLines.length, 2, '这么长的拼音应当折成两行');
+  const oneLine = 38 - L.METRICS.cellPadMm - L.METRICS.cellBorderMm;
+  const unwrapped = oneLine / L.pinyinEms('cháng fāng xíng');
+  assert.ok(got.pinyin > unwrapped, `折行后 ${got.pinyin.toFixed(1)} 应当大于不折的 ${unwrapped.toFixed(1)}`);
 });
