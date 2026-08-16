@@ -218,19 +218,20 @@
   .word { display: flex; align-items: flex-end; justify-content: center; gap: .8mm; }
   .word .ch { display: flex; flex-direction: column; align-items: center; }
 
+  /* 汉字字号：按格宽和字数平摊，但封顶 14mm，免得单字词一个字占满整格 */
+  .word { --hz: min(14mm, calc(var(--cw) / (var(--n) + 0.8))); }
+
   .word .py {
-    /* 两个上限取小：一是汉字字号的四成（教材里的观感比例），
-       二是按格宽平摊，防止 cháng / zhuàng 这种长音节把格子撑破 */
-    font-size: min(
-      calc(var(--cw) / (var(--n) + 0.8) * 0.40),
-      calc(var(--cw) / var(--n) * 0.30)
-    );
+    /* 必须从「封顶后」的汉字字号推导 —— 直接用未封顶的算式，
+       单字词的拼音会偏大，行高一矮就把格子顶破（5x8 上实测 62 格溢出）。
+       第二个上限按格宽平摊，挡住 cháng / zhuàng 这种长音节撑宽格子。 */
+    font-size: min(calc(var(--hz) * 0.40), calc(var(--cw) / var(--n) * 0.30));
     line-height: 1.25;
     color: #444;
     white-space: nowrap;
   }
   .word .hz {
-    font-size: min(14mm, calc(var(--cw) / (var(--n) + 0.8)));
+    font-size: var(--hz);
     line-height: 1.1;
     font-weight: 500;
   }
@@ -380,6 +381,7 @@
           <option value="4x6">4 列 x 6 行（24 词，格子最大）</option>
           <option value="5x6" selected>5 列 x 6 行（30 词，推荐）</option>
           <option value="5x7">5 列 x 7 行（35 词，复习量大）</option>
+          <option value="5x8">5 列 x 8 行（40 词，格子最密，一局最长）</option>
         </select>
       </label>
 
