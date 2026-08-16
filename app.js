@@ -19,7 +19,7 @@
 
   const el = {
     packs: $('packs'), custom: $('custom'), mode: $('mode'), grid: $('grid'), count: $('count'),
-    title: $('title'), seed: $('seed'),
+    title: $('title'), seed: $('seed'), refCard: $('refCard'),
     generate: $('generate'), printCards: $('printCards'),
     status: $('status'), cards: $('cards'),
   };
@@ -29,7 +29,7 @@
   el.cards.style.setProperty('--lh-py', L.METRICS.pinyinLineHeight);
 
   /** 本次生成的结果 */
-  let state = { pool: [], deck: [], cols: 0, rows: 0, seed: '', mode: 'both' };
+  let state = { pool: [], deck: [], cols: 0, rows: 0, seed: '', mode: 'both', withRef: false };
 
   // ---------- 主题勾选 ----------
 
@@ -151,14 +151,15 @@
     }
 
     el.seed.value = seed;
-    state = { pool, deck, cols, rows, seed, mode: el.mode.value };
+    state = { pool, deck, cols, rows, seed, mode: el.mode.value, withRef: el.refCard.checked };
 
     renderCards();
     el.printCards.disabled = false;
 
-    say(`已生成 ${deck.length} 张学生卡 + 1 张裁判卡，共 ${deck.length + 1} 页` +
-        `（种子 ${seed}）。${MODE_LABEL[state.mode]}，每张 ${cols * rows} 格。` +
-        `全班词语相同，裁判照着自己那张划掉就行。`);
+    const pages = deck.length + (state.withRef ? 1 : 0);
+    say(`已生成 ${deck.length} 张学生卡${state.withRef ? ' + 1 张裁判页' : ''}，` +
+        `共 ${pages} 页（种子 ${seed}）。${MODE_LABEL[state.mode]}，每张 ${cols * rows} 格。` +
+        `全班词语相同，只有位置不同。`);
   });
 
   // ---------- 渲染一个词（拼音逐字对齐汉字） ----------
@@ -272,13 +273,15 @@
 
   function renderCards() {
     el.cards.textContent = '';
-    // 裁判那张排在最前面，老师撕走第一页就行。
-    // 它用独立的摆法 —— 否则会和某个学生的卡一模一样，那孩子照着老师划掉的位置抄就行了。
-    const referee = L.buildCard({
-      words: state.deck[0].cells,
-      seed: `${state.seed}-ref`,
-    });
-    el.cards.appendChild(renderCard(referee, true));
+    if (state.withRef) {
+      // 裁判那张排在最前面，老师撕走第一页就行。
+      // 它用独立的摆法 —— 否则会和某个学生的卡一模一样，那孩子照着老师划掉的位置抄就行了。
+      const referee = L.buildCard({
+        words: state.deck[0].cells,
+        seed: `${state.seed}-ref`,
+      });
+      el.cards.appendChild(renderCard(referee, true));
+    }
     for (const card of state.deck) el.cards.appendChild(renderCard(card, false));
   }
 

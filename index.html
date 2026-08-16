@@ -318,6 +318,11 @@
       </label>
     </div>
 
+    <label class="checkline" style="margin-top:16px">
+      <input type="checkbox" id="refCard">
+      <span>多印一张裁判页<span class="count" style="color:var(--muted)">（排在最前面，抬头是「裁判用」、没有姓名栏，摆法和学生卡都不同，供老师照着念、念过的划掉。全班词语本来就相同，所以随便拿一张学生卡当喊词单也行）</span></span>
+    </label>
+
     <div class="row" style="margin-top:18px">
       <button id="generate">生成卡片</button>
       <button id="printCards" class="ghost" disabled>打印</button>
@@ -334,8 +339,8 @@
 <!-- GitHub Pages 给每个文件发 Cache-Control: max-age=600，三个文件各缓存各的。
      不带版本号的话，回访用户可能拿到「新 HTML + 旧 app.js」，页面直接坏掉。
      === 改了 js 就把下面三处 v= 一起 +1 === -->
-<script src="logic.js?v=3"></script>
-<script src="words.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="logic.js?v=4"></script>
+<script src="words.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
