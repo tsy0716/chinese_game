@@ -478,3 +478,41 @@ test('cellFontSizes: 纯拼音模式下，长拼音靠折两行换来更大的�
   const unwrapped = oneLine / L.pinyinEms('cháng fāng xíng');
   assert.ok(got.pinyin > unwrapped, `折行后 ${got.pinyin.toFixed(1)} 应当大于不折的 ${unwrapped.toFixed(1)}`);
 });
+
+// ---------- index.html 与 logic.js 的一致性 ----------
+//
+// 起因：把网格选项从写死在 HTML 改成纯 JS 填充后，「新 HTML + 浏览器缓存的旧 app.js」
+// 这个组合会让下拉变成完全空白 —— 页面看起来坏了，还不报错。
+// 两道防线：HTML 里保留一份静态兜底选项（旧 JS 也能用），脚本地址带版本号（不让 JS 变旧）。
+
+const fs = require('node:fs');
+const HTML = fs.readFileSync(require('node:path').join(__dirname, 'index.html'), 'utf8');
+
+test('index.html: 网格下拉里有静态兜底选项，JS 没跑起来也不会是空白', () => {
+  const select = HTML.match(/<select id="grid">([\s\S]*?)<\/select>/);
+  assert.ok(select, '找不到 id="grid" 的 select');
+  const options = [...select[1].matchAll(/value="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(options.length > 0, '网格下拉是空的 —— 旧版 app.js 会让用户看到空白下拉');
+});
+
+test('index.html: 静态兜底选项与 logic.js 的默认模式网格完全一致', () => {
+  const select = HTML.match(/<select id="grid">([\s\S]*?)<\/select>/);
+  const options = [...select[1].matchAll(/value="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepStrictEqual(
+    options, L.GRIDS.both,
+    'HTML 里的兜底选项和 GRIDS.both 对不上了，改了一处忘了另一处'
+  );
+});
+
+test('index.html: 本地脚本都带版本号，避免用户拿到缓存的旧 JS', () => {
+  const srcs = [...HTML.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(srcs.length >= 3, `只找到 ${srcs.length} 个脚本标签`);
+  for (const src of srcs) {
+    assert.match(src, /\?v=/, `${src} 没带 ?v= 版本号，改版后用户会拿到缓存的旧文件`);
+  }
+});
+
+test('index.html: 三个脚本用同一个版本号，不会出现半新半旧', () => {
+  const versions = [...HTML.matchAll(/<script src="[^"?]+\?v=([^"]+)"/g)].map((m) => m[1]);
+  assert.strictEqual(new Set(versions).size, 1, `版本号不统一：${versions.join(', ')}`);
+});
