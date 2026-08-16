@@ -10,8 +10,9 @@
   const L = window.BingoLogic;
   const W = window.BingoWords;
 
-  const NEED = 4;          // 连几个算赢
+  const NEED = 4;            // 连几个算赢
   const PAGE_INNER_MM = 190; // A4 竖版扣掉 10mm 页边距后的可用宽度
+  const GRID_MM = 210;       // 网格总高；与 index.html 里的 --card-h 配套（24 + 4 + 210 = 238）
 
   const $ = (id) => document.getElementById(id);
 
@@ -212,7 +213,8 @@
       const grid = document.createElement('div');
       grid.className = 'card__grid';
       grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-      grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+      // 行高写死，不用 1fr —— 卡片高度必须确定，否则打印时可能被劈成两页
+      grid.style.gridTemplateRows = `repeat(${rows}, ${GRID_MM / rows}mm)`;
       grid.style.setProperty('--cw', (PAGE_INNER_MM / cols) + 'mm');
 
       for (const word of card.cells) {

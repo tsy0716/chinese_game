@@ -149,6 +149,11 @@
 
   .cards {
     --s: .4;                       /* 屏幕预览缩放 */
+    /* 卡片总高 = 页眉 24 + 间隔 4 + 网格 210 = 238mm。
+       A4 竖版理论可打印高度是 277mm，但浏览器打开「页眉和页脚」后会再吃掉
+       上下各约 10mm。238mm 留足余量，页眉页脚开着也装得下一整页，
+       不会被劈成两页。 */
+    --card-h: 238mm;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(calc(190mm * .4), 1fr));
     gap: 18px;
@@ -157,13 +162,13 @@
 
   .card-slot {
     width: calc(190mm * var(--s));
-    height: calc(277mm * var(--s));
+    height: calc(var(--card-h) * var(--s));
     overflow: hidden;
   }
 
   .card {
     width: 190mm;
-    height: 277mm;
+    height: var(--card-h);
     background: #fff;
     color: #000;
     display: flex;
@@ -174,7 +179,7 @@
   }
 
   .card__head {
-    flex: 0 0 30mm;
+    flex: 0 0 24mm;
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
@@ -189,7 +194,9 @@
   .card__id { font-size: 3.6mm; color: #555; font-variant-numeric: tabular-nums; }
 
   .card__grid {
-    flex: 1;
+    /* 行高由 app.js 写死成 mm（总计 210mm），不用 flex 自动撑满 ——
+       高度必须是确定值，才能保证一张卡永远只占一页 */
+    flex: none;
     display: grid;
     gap: 0;
     margin-top: 4mm;
@@ -322,14 +329,19 @@
       break-after: page;
       page-break-after: always;
       break-inside: avoid;
+      page-break-inside: avoid;
     }
     .card-slot:last-child { break-after: auto; page-break-after: auto; }
     .card {
       transform: none;
       border: none;
       width: 100%;
-      /* 可用高度是 297 - 10 - 10 = 277mm，留 2mm 余量防止舍入溢出到第二页 */
-      height: 275mm;
+      /* 高度交给内容决定（页眉 24 + 间隔 4 + 网格 210 = 238mm）。
+         不写死成「理论可打印高度」—— 那样只要用户开了页眉页脚、
+         或者选了别的页边距，就会溢出到第二页。 */
+      height: auto;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     .sheet__head { display: block; margin-bottom: 6mm; }
@@ -399,7 +411,7 @@
     </div>
 
     <p class="status" id="status">先选几个主题，然后点「生成卡片」。</p>
-    <p class="hint">打印时记得在浏览器打印对话框里关掉「页眉和页脚」，并把边距设为「默认」，否则页码和网址会印到卡片上。</p>
+    <p class="hint">纸张选 A4 竖向，一页一张卡。页眉页脚开着也不会把卡片劈成两页，但页码和网址会印在卡片旁边 —— 想干净一点就在打印对话框里关掉「页眉和页脚」。</p>
   </section>
 
   <section class="panel noprint rules">
