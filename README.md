@@ -10,7 +10,7 @@
 
 **这个工具只负责出题面** —— 连几个算赢、横竖斜算不算、用棋子还是画圈，都由你自己定。
 
-**在线使用：** https://tsy0716.github.io/chinese_game/
+**在线使用：** https://tsy0716.github.io/chinese_toolbox/
 
 不想联网也行 —— 把这个仓库下载成 zip 解压，双击 `index.html` 就能用。没有构建步骤，
 没有依赖，没有服务器。
