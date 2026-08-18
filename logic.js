@@ -113,7 +113,16 @@
   const CJK = /[㐀-䶿一-鿿豈-﫿]/;
 
   /**
-   * 解析老师粘进来的词表，每行一个「汉字 拼音」。
+   * 解析老师粘进来的词表。
+   *
+   * 一行写一个词，或者用逗号（, ，、）隔开一串词。每个词有两种写法：
+   *
+   *   苹果             —— 只写汉字。这种词**只能用在「只印汉字」模式**
+   *   苹果 píng guǒ    —— 汉字后面空一格写拼音，三种模式都能用
+   *
+   * 页面不会替老师推拼音 —— 多音字（长、行、了、还、干）猜错了比没有更糟，
+   * 而只印汉字的时候本来就用不着拼音。
+   *
    * 空行和 # 开头的注释行会跳过；重复的词只留一个。
    */
   function parseWordList(text) {
@@ -125,27 +134,59 @@
       const line = rawLine.trim();
       if (!line || line.startsWith('#')) return;
 
-      const parts = line.split(/[\s　]+/);
-      if (parts.length < 2) {
-        throw new Error(`第 ${lineNo} 行只有汉字没有拼音：「${line}」，正确写法是「苹果 píngguǒ」`);
-      }
+      for (const rawEntry of line.split(/[,，、]/)) {
+        const entry = rawEntry.trim();
+        if (!entry) continue; // 「苹果,,香蕉」和结尾多打的那个逗号，都不算词
 
-      const hanzi = parts[0];
-      const pinyin = parts.slice(1).join(' ');
+        const parts = entry.split(/[\s　]+/);
+        const hanzi = parts[0];
+        const pinyin = parts.slice(1).join(' ');
 
-      if (!CJK.test(hanzi)) {
-        throw new Error(`第 ${lineNo} 行开头不是汉字：「${line}」，正确写法是「苹果 píngguǒ」`);
-      }
-      if (CJK.test(pinyin)) {
-        throw new Error(`第 ${lineNo} 行的拼音里混进了汉字：「${line}」，一行只能写一个词`);
-      }
+        if (!CJK.test(hanzi)) {
+          throw new Error(
+            `第 ${lineNo} 行的「${entry}」开头不是汉字，写成「苹果」或「苹果 píng guǒ」都行`
+          );
+        }
+        if (CJK.test(pinyin)) {
+          throw new Error(
+            `第 ${lineNo} 行的「${entry}」拼音里混进了汉字 —— 词和词之间要用逗号或换行隔开`
+          );
+        }
 
-      if (seen.has(hanzi)) return;
-      seen.add(hanzi);
-      out.push({ hanzi, pinyin });
+        if (seen.has(hanzi)) continue;
+        seen.add(hanzi);
+        out.push({ hanzi, pinyin });
+      }
     });
 
     return out;
+  }
+
+  /**
+   * 内置词库 + 自定义词表，按汉字去重，返回新数组。
+   *
+   * 自定义的覆盖内置的（老师要改拼音就靠这个），但**只写了汉字的自定义词不会把内置
+   * 的拼音抹掉** —— 否则老师随手把「苹果」抄进新词表，这个词反而在「汉字+拼音」模式
+   * 下用不了了。
+   */
+  function mergeWords(base, extra) {
+    const map = new Map();
+    for (const w of base) map.set(w.hanzi, w);
+    for (const w of extra) {
+      const known = map.get(w.hanzi);
+      if (!String(w.pinyin || '').trim() && known) continue;
+      map.set(w.hanzi, w);
+    }
+    return [...map.values()];
+  }
+
+  /**
+   * 按显示模式筛词池：只写了汉字、没拼音的词只能用在「只印汉字」模式，
+   * 另外两个模式渲染不出来，得先滤掉再抽词。
+   */
+  function usableWords(pool, mode) {
+    if (mode === 'hanzi') return pool.slice();
+    return pool.filter((w) => String(w.pinyin || '').trim() !== '');
   }
 
   // ---------- 拼音逐字对齐 ----------
@@ -354,7 +395,8 @@
 
   return {
     makeRng, shuffle, pickN, buildCard, buildDeck,
-    parseWordList, alignPinyin, cellFontSizes, splitPinyinLines, pinyinEms,
+    parseWordList, mergeWords, usableWords,
+    alignPinyin, cellFontSizes, splitPinyinLines, pinyinEms,
     METRICS, GRIDS,
   };
 });

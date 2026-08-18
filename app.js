@@ -59,12 +59,17 @@
 
   /** 选中的主题 + 自定义词表，按汉字去重（自定义的覆盖内置的） */
   function buildPool() {
-    const map = new Map();
-    for (const pack of selectedPacks()) {
-      for (const w of pack.words) map.set(w.hanzi, w);
-    }
-    for (const w of L.parseWordList(el.custom.value)) map.set(w.hanzi, w);
-    return [...map.values()];
+    const base = [];
+    for (const pack of selectedPacks()) base.push(...pack.words);
+    return L.mergeWords(base, L.parseWordList(el.custom.value));
+  }
+
+  /**
+   * 当前模式真正能用的词。
+   * 自定义词表里只写了汉字的词没有拼音，另外两个模式渲染不出来，得先滤掉。
+   */
+  function poolForMode() {
+    return L.usableWords(buildPool(), el.mode.value);
   }
 
   function gridSize() {
@@ -104,20 +109,35 @@
   }
 
   function reportPool() {
-    let pool;
+    let all, pool;
     try {
-      pool = buildPool();
+      all = buildPool();
+      pool = L.usableWords(all, el.mode.value);
     } catch (err) {
       say('自定义词表有问题 —— ' + err.message, true);
       return;
     }
+
+    // 跳过的词要说出来。否则老师只写汉字加了 20 个词，却看见词池纹丝不动，
+    // 会以为加词框坏了。
+    const dropped = all.length - pool.length;
+    const note = dropped
+      ? `另有 ${dropped} 个词只写了汉字、没写拼音，「${MODE_LABEL[el.mode.value]}」印不出来，已跳过。`
+      : '';
+
     const { cols, rows } = gridSize();
     const cells = cols * rows;
-    if (pool.length < cells) {
-      say(`词池 ${pool.length} 个词，铺不满 ${cols}x${rows} = ${cells} 格，再多选一个主题。`, true);
-    } else {
-      say(`词池 ${pool.length} 个词，这一局随机抽 ${cells} 个，全班共用这批词、只打乱位置。`);
+
+    if (pool.length >= cells) {
+      say(`词池 ${pool.length} 个词，这一局随机抽 ${cells} 个，全班共用这批词、只打乱位置。${note}`);
+      return;
     }
+
+    // 铺不满时，如果正是被跳过的词拖累的，指路「换个模式」比「再勾一个主题」有用
+    const fix = dropped
+      ? '把「格子里印什么」换成「只印汉字」就能用上，或者给它们补上拼音。'
+      : '再多选一个主题。';
+    say(`词池 ${pool.length} 个词，铺不满 ${cols}x${rows} = ${cells} 格。${note}${fix}`, true);
   }
 
   el.grid.addEventListener('change', reportPool);
@@ -132,7 +152,7 @@
   el.generate.addEventListener('click', () => {
     let pool;
     try {
-      pool = buildPool();
+      pool = poolForMode();
     } catch (err) {
       say('自定义词表有问题 —— ' + err.message, true);
       return;

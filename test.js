@@ -190,8 +190,45 @@ test('parseWordList: 拼音带多个音节时整体保留', () => {
   assert.deepStrictEqual(got, [{ hanzi: '对不起', pinyin: 'duì bu qǐ' }]);
 });
 
-test('parseWordList: 只写汉字没写拼音时报错并指出行号', () => {
-  assert.throws(() => L.parseWordList('苹果 píngguǒ\n香蕉'), /第 2 行/);
+test('parseWordList: 只写汉字时拼音留空', () => {
+  const got = L.parseWordList('苹果\n香蕉');
+  assert.deepStrictEqual(got, [
+    { hanzi: '苹果', pinyin: '' },
+    { hanzi: '香蕉', pinyin: '' },
+  ]);
+});
+
+test('parseWordList: 逗号分隔的纯汉字词表', () => {
+  const got = L.parseWordList('苹果,香蕉,西瓜');
+  assert.deepStrictEqual(got.map((w) => w.hanzi), ['苹果', '香蕉', '西瓜']);
+});
+
+test('parseWordList: 中文逗号和顿号也算分隔符', () => {
+  const got = L.parseWordList('苹果，香蕉、西瓜');
+  assert.deepStrictEqual(got.map((w) => w.hanzi), ['苹果', '香蕉', '西瓜']);
+});
+
+test('parseWordList: 逗号两边的空格不会被当成拼音', () => {
+  const got = L.parseWordList('苹果, 香蕉 , 西瓜');
+  assert.deepStrictEqual(got.map((w) => w.pinyin), ['', '', '']);
+});
+
+test('parseWordList: 带拼音和不带拼音可以混着写', () => {
+  const got = L.parseWordList('苹果 píng guǒ,香蕉');
+  assert.deepStrictEqual(got, [
+    { hanzi: '苹果', pinyin: 'píng guǒ' },
+    { hanzi: '香蕉', pinyin: '' },
+  ]);
+});
+
+test('parseWordList: 多余的逗号不会多出空词', () => {
+  const got = L.parseWordList('苹果,香蕉,,\n,');
+  assert.strictEqual(got.length, 2);
+});
+
+test('parseWordList: 逗号分隔时重复的词也只留一个', () => {
+  const got = L.parseWordList('苹果,香蕉,苹果');
+  assert.strictEqual(got.length, 2);
 });
 
 test('parseWordList: 拼音位置混进汉字时报错（多半是一行粘了两个词）', () => {
@@ -209,6 +246,64 @@ test('parseWordList: 同一个词重复出现时只留一个', () => {
 
 test('parseWordList: 空文本得到空列表', () => {
   assert.deepStrictEqual(L.parseWordList('   \n\n'), []);
+});
+
+// ---------- mergeWords：内置词库 + 自定义词表 ----------
+
+test('mergeWords: 自定义词表里的拼音覆盖内置的', () => {
+  const got = L.mergeWords(
+    [{ hanzi: '长大', pinyin: 'cháng dà' }],
+    [{ hanzi: '长大', pinyin: 'zhǎng dà' }]
+  );
+  assert.deepStrictEqual(got, [{ hanzi: '长大', pinyin: 'zhǎng dà' }]);
+});
+
+test('mergeWords: 自定义只写了汉字时，沿用内置词库已有的拼音', () => {
+  const got = L.mergeWords(
+    [{ hanzi: '苹果', pinyin: 'píng guǒ' }],
+    [{ hanzi: '苹果', pinyin: '' }]
+  );
+  assert.deepStrictEqual(got, [{ hanzi: '苹果', pinyin: 'píng guǒ' }]);
+});
+
+test('mergeWords: 内置词库里没有的词原样加进来', () => {
+  const got = L.mergeWords(
+    [{ hanzi: '苹果', pinyin: 'píng guǒ' }],
+    [{ hanzi: '榴莲', pinyin: '' }]
+  );
+  assert.deepStrictEqual(got, [
+    { hanzi: '苹果', pinyin: 'píng guǒ' },
+    { hanzi: '榴莲', pinyin: '' },
+  ]);
+});
+
+test('mergeWords: 不动传进来的数组', () => {
+  const base = [{ hanzi: '苹果', pinyin: 'píng guǒ' }];
+  L.mergeWords(base, [{ hanzi: '香蕉', pinyin: '' }]);
+  assert.strictEqual(base.length, 1);
+});
+
+// ---------- usableWords：没拼音的词只能用在纯汉字模式 ----------
+
+const MIXED = [
+  { hanzi: '苹果', pinyin: 'píng guǒ' },
+  { hanzi: '榴莲', pinyin: '' },
+];
+
+test('usableWords: 纯汉字模式下没拼音的词照用', () => {
+  assert.deepStrictEqual(L.usableWords(MIXED, 'hanzi').map((w) => w.hanzi), ['苹果', '榴莲']);
+});
+
+test('usableWords: 汉字+拼音模式下滤掉没拼音的词', () => {
+  assert.deepStrictEqual(L.usableWords(MIXED, 'both').map((w) => w.hanzi), ['苹果']);
+});
+
+test('usableWords: 纯拼音模式下滤掉没拼音的词', () => {
+  assert.deepStrictEqual(L.usableWords(MIXED, 'pinyin').map((w) => w.hanzi), ['苹果']);
+});
+
+test('usableWords: 只有空格的拼音也算没拼音', () => {
+  assert.strictEqual(L.usableWords([{ hanzi: '榴莲', pinyin: '  ' }], 'both').length, 0);
 });
 
 // ---------- alignPinyin：拼音逐字对齐汉字 ----------
