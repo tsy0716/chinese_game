@@ -181,6 +181,65 @@
   }
 
   /**
+   * 给只写了汉字的词补上拼音。
+   *
+   * 转换器由调用方注入 —— 浏览器里是 pinyin-pro（vendor/pinyin-pro.js），logic.js
+   * 本身不依赖任何库，node 里才能用假转换器测。
+   *
+   * 两条规矩：
+   *   1. 老师自己写了拼音的，一律不动 —— 人写的永远压过机器标的
+   *   2. 机器标出来的打上 auto 标记，页面据此提醒老师核对
+   *
+   * 转换器认不出、返回空、或者干脆抛错，都保持这个词没拼音的原样 ——
+   * 后面 usableWords 会把它挡在带拼音的模式外，不至于印出个空格子。
+   */
+  function fillPinyin(words, toPinyin) {
+    return words.map((w) => {
+      if (String(w.pinyin || '').trim() || typeof toPinyin !== 'function') return w;
+      let got = '';
+      try {
+        got = String(toPinyin(w.hanzi) || '').trim();
+      } catch (err) {
+        got = ''; // 转换器炸了不该把整页拖垮，退回「这个词没拼音」
+      }
+      return got ? { hanzi: w.hanzi, pinyin: got, auto: true } : w;
+    });
+  }
+
+  /**
+   * 校园高频词里真正会踩的多音字。
+   *
+   * 为什么是一份手挑的清单，而不是「凡是有多个读音的字都算」：后者会把 657 个
+   * 内置词里的 244 个（37%）都标成可疑 —— 连「六」「万」「个」都在内（它们确实
+   * 有生僻的第二读音）。老师看到 37% 全是黄的，等于什么都没看。这份清单只命中
+   * 48 个（7%），才是真的能一个个核对完的量。
+   */
+  const POLYPHONES = new Set(Array.from('长行还干了为和觉发乐重教种数地着得少好空相差便中会大转背朝散卷系'));
+
+  /**
+   * 自动标的拼音里，哪些得让老师亲自核对 —— 含多音字的那些。
+   *
+   * 实测 pinyin-pro 在校园高频词上很准，但「还给」会标成 hái gěi、「教书」会标成
+   * jiào shū。这类错必须让老师看见，而不是悄悄印在卡片上。老师自己写了拼音的词
+   * 不在此列 —— 人写的不需要机器复核。
+   */
+  function needsReview(words) {
+    return words.filter(
+      (w) => w.auto && Array.from(String(w.hanzi)).some((ch) => POLYPHONES.has(ch))
+    );
+  }
+
+  /**
+   * 把词表写回输入框的格式：一行一个「汉字 拼音」，没拼音的只写汉字。
+   * parseWordList 能原样读回去（test.js 里对这个来回转换有测试）。
+   */
+  function formatWordList(words) {
+    return words
+      .map((w) => (String(w.pinyin || '').trim() ? `${w.hanzi} ${w.pinyin}` : w.hanzi))
+      .join('\n');
+  }
+
+  /**
    * 按显示模式筛词池：只写了汉字、没拼音的词只能用在「只印汉字」模式，
    * 另外两个模式渲染不出来，得先滤掉再抽词。
    */
@@ -395,7 +454,7 @@
 
   return {
     makeRng, shuffle, pickN, buildCard, buildDeck,
-    parseWordList, mergeWords, usableWords,
+    parseWordList, mergeWords, usableWords, fillPinyin, formatWordList, needsReview,
     alignPinyin, cellFontSizes, splitPinyinLines, pinyinEms,
     METRICS, GRIDS,
   };

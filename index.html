@@ -271,8 +271,12 @@
     <div style="margin-top:18px">
       <h2>另外加词（可留空）</h2>
       <textarea id="custom" spellcheck="false"
-        placeholder="只写汉字就行，逗号或换行隔开：&#10;苹果,香蕉,西瓜&#10;&#10;想在带拼音的模式里用，就在汉字后面空一格写拼音：&#10;对不起 duì bu qǐ"></textarea>
-      <p class="hint">只写汉字的词<b>只能用在「只印汉字」模式</b> —— 页面不替你猜拼音，多音字（长、行、还、干）猜错了比没有更糟。要拼音就自己写：汉字后面空一格，<b>按音节分开、一个音节对一个汉字</b>（苹果 píng guǒ），卡片上拼音是逐字标在汉字正上方的。井号 # 开头的行会被忽略。</p>
+        placeholder="只写汉字就行，逗号或换行隔开：&#10;苹果,香蕉,西瓜&#10;&#10;拼音会自动标上。想自己写就在汉字后面空一格：&#10;对不起 duì bu qǐ"></textarea>
+      <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+        <button type="button" class="ghost" id="autoPinyin">标上拼音，填回框里</button>
+        <span style="font-size:13px; color:var(--muted)">看一眼、改一改，比直接印上去稳</span>
+      </div>
+      <p class="hint"><b>拼音是自动标的</b>，不用你写 —— 生成卡片时会顺手标好。多音字大多能按词义选对（长大 zhǎng、银行 háng、重新 chóng），但也会走眼（还给 会标成 hái gěi），所以<b>凡是含多音字的词，状态栏都会单独点名让你核对</b>。点上面那个按钮就能把拼音填回框里直接改。自己写的拼音一律优先，机器不覆盖：汉字后空一格、<b>按音节分开，一个音节对一个汉字</b>（苹果 píng guǒ）。井号 # 开头的行会被忽略。</p>
     </div>
   </section>
 
@@ -340,8 +344,9 @@
 <!-- GitHub Pages 给每个文件发 Cache-Control: max-age=600，三个文件各缓存各的。
      不带版本号的话，回访用户可能拿到「新 HTML + 旧 app.js」，页面直接坏掉。
      === 改了 js 就把下面三处 v= 一起 +1 === -->
-<script src="logic.js?v=5"></script>
-<script src="words.js?v=5"></script>
-<script src="app.js?v=5"></script>
+<script src="vendor/pinyin-pro.js?v=3.29.2"></script>
+<script src="logic.js?v=7"></script>
+<script src="words.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

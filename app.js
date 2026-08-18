@@ -20,7 +20,7 @@
   const el = {
     packs: $('packs'), custom: $('custom'), mode: $('mode'), grid: $('grid'), count: $('count'),
     title: $('title'), seed: $('seed'), refCard: $('refCard'),
-    generate: $('generate'), printCards: $('printCards'),
+    autoPinyin: $('autoPinyin'), generate: $('generate'), printCards: $('printCards'),
     status: $('status'), cards: $('cards'),
   };
 
@@ -57,11 +57,33 @@
     return W.packs.filter((p) => ids.has(p.id));
   }
 
-  /** 选中的主题 + 自定义词表，按汉字去重（自定义的覆盖内置的） */
+  /**
+   * 汉字 -> 拼音，按音节拆开、一个音节对一个汉字。
+   *
+   * 用的是打包在 vendor/ 里的 pinyin-pro（MIT），不走 CDN —— 这样把仓库下载成 zip
+   * 双击 index.html 也能标拼音，不用联网。
+   *
+   * 库没加载出来时返回空串：那些词就当「只写了汉字」处理，页面照样能用（只是
+   * 只能印纯汉字），不会整页报错。
+   */
+  function toPinyin(hanzi) {
+    if (!window.pinyinPro) return '';
+    return window.pinyinPro.pinyin(hanzi, { type: 'array' }).join(' ');
+  }
+
+  /** 老师在加词框里写的词，拼音已补好 */
+  function customWords() {
+    return L.fillPinyin(L.parseWordList(el.custom.value), toPinyin);
+  }
+
+  /**
+   * 选中的主题 + 自定义词表，按汉字去重（自定义的覆盖内置的），
+   * 再给所有没拼音的词标上拼音 —— 词库里存的只有汉字，所以这一步是必须的。
+   */
   function buildPool() {
     const base = [];
     for (const pack of selectedPacks()) base.push(...pack.words);
-    return L.mergeWords(base, L.parseWordList(el.custom.value));
+    return L.fillPinyin(L.mergeWords(base, L.parseWordList(el.custom.value)), toPinyin);
   }
 
   /**
@@ -118,18 +140,28 @@
       return;
     }
 
-    // 跳过的词要说出来。否则老师只写汉字加了 20 个词，却看见词池纹丝不动，
-    // 会以为加词框坏了。
+    // 只点名老师自己加的词。内置的 657 个词拼音也是自动标的，但它们的读音由
+    // pinyin.test.js 整库把关过，不该每次都拿来烦老师；老师现加的词没人验过，
+    // 而且实测「还给」会被标成 hái gěi —— 这种错必须让他看见。
+    const review = L.needsReview(customWords());
+    const reviewNote = review.length
+      ? `自己加的词里，这几个含多音字，建议核对：` +
+        `${review.map((w) => `${w.hanzi}（${w.pinyin}）`).join('、')}。`
+      : '';
+
+    // 有词标不出拼音，基本只有一个原因：拼音库没加载出来
     const dropped = all.length - pool.length;
     const note = dropped
-      ? `另有 ${dropped} 个词只写了汉字、没写拼音，「${MODE_LABEL[el.mode.value]}」印不出来，已跳过。`
+      ? `另有 ${dropped} 个词没标出拼音（拼音库没加载出来？），` +
+        `「${MODE_LABEL[el.mode.value]}」印不出来，已跳过。`
       : '';
 
     const { cols, rows } = gridSize();
     const cells = cols * rows;
 
     if (pool.length >= cells) {
-      say(`词池 ${pool.length} 个词，这一局随机抽 ${cells} 个，全班共用这批词、只打乱位置。${note}`);
+      say(`词池 ${pool.length} 个词，这一局随机抽 ${cells} 个，全班共用这批词、` +
+          `只打乱位置。${note}${reviewNote}`);
       return;
     }
 
@@ -137,11 +169,42 @@
     const fix = dropped
       ? '把「格子里印什么」换成「只印汉字」就能用上，或者给它们补上拼音。'
       : '再多选一个主题。';
-    say(`词池 ${pool.length} 个词，铺不满 ${cols}x${rows} = ${cells} 格。${note}${fix}`, true);
+    say(`词池 ${pool.length} 个词，铺不满 ${cols}x${rows} = ${cells} 格。${note}${fix}${reviewNote}`, true);
   }
 
   el.grid.addEventListener('change', reportPool);
   el.custom.addEventListener('input', reportPool);
+
+  // ---------- 把自动标的拼音填回框里，让老师能改 ----------
+
+  el.autoPinyin.addEventListener('click', () => {
+    let words;
+    try {
+      words = customWords();
+    } catch (err) {
+      say('自定义词表有问题 —— ' + err.message, true);
+      return;
+    }
+    if (!words.length) {
+      say('加词框是空的，没什么可标的。', true);
+      return;
+    }
+    if (!window.pinyinPro) {
+      say('拼音库没加载出来（vendor/pinyin-pro.js），只能自己写拼音。', true);
+      return;
+    }
+
+    // 写回去之前先算好要点名的词 —— 写回去之后它们就成了「老师写的」，
+    // auto 标记没了，正是最该核对的时候反而不提醒了
+    const review = L.needsReview(words);
+    const n = words.filter((w) => w.auto).length;
+    el.custom.value = L.formatWordList(words);
+
+    say(`已给 ${n} 个词标上拼音，填回框里了，可以直接改。` +
+        (review.length
+          ? `这几个含多音字，务必核对：${review.map((w) => `${w.hanzi}（${w.pinyin}）`).join('、')}。`
+          : ''));
+  });
 
   // ---------- 生成 ----------
 

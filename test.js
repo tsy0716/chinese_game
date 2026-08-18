@@ -283,6 +283,103 @@ test('mergeWords: 不动传进来的数组', () => {
   assert.strictEqual(base.length, 1);
 });
 
+// ---------- fillPinyin：自动补拼音 ----------
+//
+// 转换器由调用方注入（浏览器里是 pinyin-pro）—— logic.js 不依赖任何库，
+// 测试里用假转换器，就能把「补拼音的规矩」和「拼音标得准不准」分开测。
+// 后者由 pinyin.test.js 拿 words.js 的人工标注当基准来量。
+
+const FAKE = (hanzi) => ({ 苹果: 'píng guǒ', 香蕉: 'xiāng jiāo' }[hanzi] || '');
+
+test('fillPinyin: 给没拼音的词补上', () => {
+  const got = L.fillPinyin([{ hanzi: '苹果', pinyin: '' }], FAKE);
+  assert.strictEqual(got[0].pinyin, 'píng guǒ');
+});
+
+test('fillPinyin: 老师自己写了拼音的词不动它', () => {
+  const got = L.fillPinyin([{ hanzi: '苹果', pinyin: 'píng guo' }], FAKE);
+  assert.strictEqual(got[0].pinyin, 'píng guo');
+  assert.ok(!got[0].auto, '老师写的不该被标成自动生成');
+});
+
+test('fillPinyin: 补出来的拼音标上 auto，好提醒老师核对', () => {
+  const got = L.fillPinyin(
+    [{ hanzi: '苹果', pinyin: '' }, { hanzi: '香蕉', pinyin: 'xiāng jiāo' }],
+    FAKE
+  );
+  assert.deepStrictEqual(got.map((w) => !!w.auto), [true, false]);
+});
+
+test('fillPinyin: 转换器认不出这个词时，保持没拼音', () => {
+  const got = L.fillPinyin([{ hanzi: '槑', pinyin: '' }], FAKE);
+  assert.strictEqual(got[0].pinyin, '');
+  assert.ok(!got[0].auto);
+});
+
+test('fillPinyin: 转换器抛错也不该把整页拖垮', () => {
+  const boom = () => { throw new Error('转换器炸了'); };
+  const got = L.fillPinyin([{ hanzi: '苹果', pinyin: '' }], boom);
+  assert.strictEqual(got[0].pinyin, '');
+});
+
+test('fillPinyin: 没有转换器时原样返回', () => {
+  const got = L.fillPinyin([{ hanzi: '苹果', pinyin: '' }], null);
+  assert.strictEqual(got[0].pinyin, '');
+});
+
+test('fillPinyin: 不动传进来的数组', () => {
+  const words = [{ hanzi: '苹果', pinyin: '' }];
+  L.fillPinyin(words, FAKE);
+  assert.strictEqual(words[0].pinyin, '');
+});
+
+// ---------- needsReview：自动标的拼音里，哪些要老师亲自核对 ----------
+
+test('needsReview: 含多音字的自动词要点名', () => {
+  const got = L.needsReview([
+    { hanzi: '还给', pinyin: 'hái gěi', auto: true },
+    { hanzi: '苹果', pinyin: 'píng guǒ', auto: true },
+  ]);
+  assert.deepStrictEqual(got.map((w) => w.hanzi), ['还给']);
+});
+
+test('needsReview: 老师自己写的拼音不用核对', () => {
+  const got = L.needsReview([{ hanzi: '还给', pinyin: 'huán gěi' }]);
+  assert.deepStrictEqual(got, []);
+});
+
+test('needsReview: 不含多音字的自动词不必点名', () => {
+  const got = L.needsReview([{ hanzi: '香蕉', pinyin: 'xiāng jiāo', auto: true }]);
+  assert.deepStrictEqual(got, []);
+});
+
+test('needsReview: 空列表得到空结果', () => {
+  assert.deepStrictEqual(L.needsReview([]), []);
+});
+
+// ---------- formatWordList：把词表写回输入框 ----------
+
+test('formatWordList: 有拼音的写成「汉字 拼音」，一行一个', () => {
+  const got = L.formatWordList([
+    { hanzi: '苹果', pinyin: 'píng guǒ' },
+    { hanzi: '香蕉', pinyin: 'xiāng jiāo' },
+  ]);
+  assert.strictEqual(got, '苹果 píng guǒ\n香蕉 xiāng jiāo');
+});
+
+test('formatWordList: 没拼音的只写汉字', () => {
+  assert.strictEqual(L.formatWordList([{ hanzi: '槑', pinyin: '' }]), '槑');
+});
+
+test('formatWordList: 写出来的东西能被 parseWordList 原样读回去', () => {
+  const words = [
+    { hanzi: '苹果', pinyin: 'píng guǒ' },
+    { hanzi: '对不起', pinyin: 'duì bu qǐ' },
+    { hanzi: '槑', pinyin: '' },
+  ];
+  assert.deepStrictEqual(L.parseWordList(L.formatWordList(words)), words);
+});
+
 // ---------- usableWords：没拼音的词只能用在纯汉字模式 ----------
 
 const MIXED = [
@@ -605,13 +702,26 @@ test('index.html: 静态兜底选项与 logic.js 的默认模式网格完全一�
 
 test('index.html: 本地脚本都带版本号，避免用户拿到缓存的旧 JS', () => {
   const srcs = [...HTML.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(srcs.length >= 3, `只找到 ${srcs.length} 个脚本标签`);
+  assert.ok(srcs.length >= 4, `只找到 ${srcs.length} 个脚本标签`);
   for (const src of srcs) {
     assert.match(src, /\?v=/, `${src} 没带 ?v= 版本号，改版后用户会拿到缓存的旧文件`);
   }
 });
 
-test('index.html: 三个脚本用同一个版本号，不会出现半新半旧', () => {
-  const versions = [...HTML.matchAll(/<script src="[^"?]+\?v=([^"]+)"/g)].map((m) => m[1]);
+test('index.html: 自己写的三个脚本共用一个版本号，不会出现半新半旧', () => {
+  // vendor/ 里打包的第三方库不在此列 —— 它钉自己的库版本号（?v=3.29.2）。
+  // 那是个 324KB 的文件，我们改一行 app.js 不该让老师把它重下一遍；
+  // 只有升级库本身时才动它。
+  const own = [...HTML.matchAll(/<script src="(?!vendor\/)([^"?]+)\?v=([^"]+)"/g)];
+  assert.strictEqual(own.length, 3, `自己的脚本应该有 3 个，实得 ${own.length}`);
+  const versions = own.map((m) => m[2]);
   assert.strictEqual(new Set(versions).size, 1, `版本号不统一：${versions.join(', ')}`);
+});
+
+test('index.html: 打包的拼音库带的版本号就是 vendor 里那个库的版本', () => {
+  const m = HTML.match(/<script src="vendor\/pinyin-pro\.js\?v=([^"]+)"/);
+  assert.ok(m, 'index.html 里没有引入 vendor/pinyin-pro.js');
+  const lib = require('./vendor/pinyin-pro.js');
+  assert.ok(typeof lib.pinyin === 'function', 'vendor/pinyin-pro.js 没导出 pinyin()');
+  assert.match(m[1], /^\d+\.\d+\.\d+$/, `版本号该写成库的版本（如 3.29.2），实得 ${m[1]}`);
 });
