@@ -299,8 +299,10 @@
              就是一个完全空白的下拉，页面像是坏了还不报错。
              这份兜底 = GRIDS.both，test.js 会校验两边一致。 -->
         <select id="grid">
+          <option value="4x4">4 列 x 4 行（16 词）</option>
           <option value="4x6">4 列 x 6 行（24 词）</option>
           <option value="4x8">4 列 x 8 行（32 词）</option>
+          <option value="5x5">5 列 x 5 行（25 词）</option>
           <option value="5x6" selected>5 列 x 6 行（30 词）</option>
           <option value="5x7">5 列 x 7 行（35 词）</option>
           <option value="5x8">5 列 x 8 行（40 词）</option>
@@ -345,8 +347,8 @@
      不带版本号的话，回访用户可能拿到「新 HTML + 旧 app.js」，页面直接坏掉。
      === 改了 js 就把下面三处 v= 一起 +1 === -->
 <script src="vendor/pinyin-pro.js?v=3.29.2"></script>
-<script src="logic.js?v=7"></script>
-<script src="words.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="logic.js?v=8"></script>
+<script src="words.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
